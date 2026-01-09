@@ -1,1 +1,92 @@
 /* Transcript plugin styles */
+
+/* Fence lines collapsed when not active */
+.transcript-fence-line {
+	font-family: var(--font-monospace);
+	font-size: 0;
+	line-height: 0;
+	height: 0;
+	overflow: hidden;
+}
+
+/* Starting fence line: collapsed, text hidden */
+.transcript-fence-line.transcript-start {
+	font-size: 0;
+	line-height: 0;
+	height: 0;
+	overflow: hidden;
+}
+
+/* Hide links in fence lines */
+.transcript-fence-line .cm-link,
+.transcript-fence-line .cm-hmd-internal-link,
+.transcript-fence-line .cm-url,
+.transcript-fence-line a {
+	color: transparent !important;
+}
+
+/* Show fence lines when cursor is in block */
+.transcript-fence-line.transcript-active {
+	background-color: var(--background-secondary);
+	font-size: 0.75em;
+	line-height: 1.4;
+	height: auto;
+	overflow: visible;
+	color: var(--text-faint);
+}
+
+.transcript-fence-line.transcript-active .cm-link,
+.transcript-fence-line.transcript-active .cm-hmd-internal-link,
+.transcript-fence-line.transcript-active .cm-url,
+.transcript-fence-line.transcript-active a {
+	color: var(--text-faint) !important;
+}
+
+/* Content lines */
+.transcript-content-line {
+	background-color: var(--background-secondary);
+	font-family: var(--font-monospace);
+}
+
+/* First content line: anchor for play button */
+.transcript-first-content {
+	position: relative;
+}
+
+/* Play button positioned in margin */
+.transcript-play-button {
+	position: absolute;
+	left: -28px;
+	top: 2px;
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	min-height: 20px;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	border: none;
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: transform 0.1s ease, left 0.1s ease;
+	z-index: 10;
+	box-sizing: border-box;
+	padding: 0;
+}
+
+.transcript-play-button svg {
+	width: 12px;
+	height: 12px;
+	stroke-width: 2.5;
+}
+
+.transcript-play-button:hover {
+	transform: scale(1.1);
+}
+
+.transcript-play-button:active {
+	transform: scale(0.95);
+}

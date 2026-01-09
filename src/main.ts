@@ -1,13 +1,14 @@
 import { Plugin } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import { transcriptField } from "./editor/state";
+import { transcriptViewPlugin } from "./editor/view-plugin";
 
 export default class TranscriptPlugin extends Plugin {
 	async onload(): Promise<void> {
 		console.debug("Transcript plugin loaded");
 
-		// Register CodeMirror extension for parsing transcript directives
-		this.registerEditorExtension([transcriptField]);
+		// Register CodeMirror extensions
+		this.registerEditorExtension([transcriptField, transcriptViewPlugin]);
 
 		// Debug command to test parsing
 		this.addCommand({
