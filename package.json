@@ -1,0 +1,29 @@
+{
+	"name": "obsidian-transcript",
+	"version": "0.1.0",
+	"description": "Rich audio transcript editing with word-level alignment",
+	"main": "main.js",
+	"type": "module",
+	"scripts": {
+		"dev": "bun run scripts/build-watch.ts",
+		"build": "tsc -noEmit -skipLibCheck && bun run scripts/build-prod.ts",
+		"test": "bun test"
+	},
+	"keywords": ["obsidian", "transcript", "audio", "alignment"],
+	"author": "Andy Matuschak",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/bun": "latest",
+		"@types/node": "^16.11.6",
+		"tslib": "2.4.0",
+		"typescript": "^5.8.3"
+	},
+	"dependencies": {
+		"mdast-util-directive": "^3.1.0",
+		"mdast-util-from-markdown": "^2.0.2",
+		"mdast-util-to-markdown": "^2.1.2",
+		"micromark": "^4.0.2",
+		"micromark-extension-directive": "^4.0.0",
+		"obsidian": "latest"
+	}
+}
