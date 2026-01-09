@@ -3,6 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { transcriptField } from "./editor/state";
 import { transcriptViewPlugin } from "./editor/view-plugin";
 import { AudioManager } from "./playback/audioManager";
+import { floatingControlsPlugin } from "./playback/floatingControls";
 
 export default class TranscriptPlugin extends Plugin {
 	async onload(): Promise<void> {
@@ -12,7 +13,11 @@ export default class TranscriptPlugin extends Plugin {
 		AudioManager.getInstance(this.app);
 
 		// Register CodeMirror extensions
-		this.registerEditorExtension([transcriptField, transcriptViewPlugin]);
+		this.registerEditorExtension([
+			transcriptField,
+			transcriptViewPlugin,
+			floatingControlsPlugin,
+		]);
 
 		// Debug command to test parsing
 		this.addCommand({
