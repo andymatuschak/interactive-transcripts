@@ -1,4 +1,4 @@
-import { ViewPlugin, ViewUpdate, EditorView } from "@codemirror/view";
+import { ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { setIcon } from "obsidian";
 import { AudioManager, PlaybackState } from "./audioManager";
 import { transcriptField } from "../editor/state";
