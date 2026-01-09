@@ -1,0 +1,17 @@
+[project]
+name = "transcript-aligner"
+version = "0.1.0"
+description = "Word-level alignment for audio transcripts"
+requires-python = ">=3.10"
+dependencies = [
+    "stable-ts>=2.0.0",
+    "torch>=2.0.0",
+]
+
+[project.optional-dependencies]
+whisperx = [
+    "whisperx>=3.0.0",
+]
+
+[dependency-groups]
+dev = []

@@ -205,3 +205,58 @@
 	opacity: 0;
 	pointer-events: none;
 }
+
+/* Alignment modal */
+.transcript-alignment-modal {
+	max-width: 400px;
+}
+
+.transcript-alignment-info {
+	margin-bottom: 16px;
+	color: var(--text-muted);
+	font-size: 13px;
+}
+
+.transcript-alignment-info p {
+	margin: 4px 0;
+}
+
+.transcript-alignment-status {
+	margin-bottom: 16px;
+	font-weight: 500;
+}
+
+.transcript-alignment-progress {
+	margin-bottom: 16px;
+}
+
+.transcript-progress-bar {
+	height: 4px;
+	background: var(--background-modifier-border);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.transcript-progress-fill {
+	height: 100%;
+	background: var(--interactive-accent);
+	width: 100%;
+	animation: transcript-progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes transcript-progress-indeterminate {
+	0% {
+		transform: translateX(-100%);
+	}
+	50% {
+		transform: translateX(0%);
+	}
+	100% {
+		transform: translateX(100%);
+	}
+}
+
+.transcript-alignment-buttons {
+	display: flex;
+	justify-content: flex-end;
+}
