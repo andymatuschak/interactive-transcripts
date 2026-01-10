@@ -53,8 +53,12 @@ function parseProgressOutput(message: string): AlignmentProgressInfo | null {
 		return { phase: "adjusting", percent: parseInt(adjustMatch[1], 10) };
 	}
 
-	if (message.includes("Loading")) {
+	if (message.includes("Initializing") || message.includes("Loading")) {
 		return { phase: "loading", percent: 0 };
+	}
+
+	if (message.includes("Trimming")) {
+		return { phase: "loading", percent: 5 };
 	}
 
 	return null;
@@ -64,6 +68,10 @@ export interface AlignerOptions {
 	tool: AlignmentTool;
 	model: string;
 	language?: string;
+	/** Start time in seconds for subrange alignment. */
+	start?: number;
+	/** End time in seconds for subrange alignment. */
+	end?: number;
 	/** Structured progress callback with parsed phase and percent. */
 	onProgress?: (info: AlignmentProgressInfo) => void;
 	/** Abort signal to cancel the alignment. */
@@ -119,6 +127,14 @@ export class Aligner {
 
 		if (options.language) {
 			args.push("--language", options.language);
+		}
+
+		if (options.start !== undefined) {
+			args.push("--start", String(options.start));
+		}
+
+		if (options.end !== undefined) {
+			args.push("--end", String(options.end));
 		}
 
 		const scriptPath = this.getScriptPath();

@@ -4,6 +4,7 @@ import { transcriptField } from "./editor/state";
 import { wordHighlightField } from "./editor/highlightState";
 import { transcriptViewPlugin } from "./editor/viewPlugin";
 import { clickToSeekExtension } from "./editor/clickToSeek";
+import { copyHandlerExtension } from "./editor/copyHandler";
 import { AudioManager } from "./playback/audioManager";
 import { floatingControlsPlugin } from "./playback/floatingControls";
 import { highlightSyncPlugin } from "./playback/highlightSync";
@@ -24,6 +25,7 @@ export default class TranscriptPlugin extends Plugin {
 			wordHighlightField,
 			transcriptViewPlugin,
 			clickToSeekExtension,
+			copyHandlerExtension,
 			alignmentLoaderPlugin,
 			floatingControlsPlugin,
 			highlightSyncPlugin,

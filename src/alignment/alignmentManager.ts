@@ -240,6 +240,8 @@ export class AlignmentManager {
 		const data = await this.aligner.align(audioFile, directive.content, {
 			tool: "stable-ts",
 			model: "base",
+			start: directive.attributes.start,
+			end: directive.attributes.end,
 			signal: abortController.signal,
 			onProgress: (info) => {
 				onProgress(info.phase, info.percent);

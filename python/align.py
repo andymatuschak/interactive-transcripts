@@ -14,17 +14,98 @@ Usage (align with text file):
 
 Usage (align with inline text):
     uv run align.py --audio path/to/audio.m4a --text "transcript text" --model base
+
+Usage (align subrange):
+    uv run align.py --audio path/to/audio.m4a --text "excerpt" --start 15.5 --end 25.75
 """
 
 import argparse
 import json
 import sys
+import tempfile
+import os
 from typing import Optional
 
 
 def progress(message: str):
     """Print progress message to stderr."""
     print(f"Progress: {message}", file=sys.stderr, flush=True)
+
+
+def trim_audio(audio_path: str, start: float, end: Optional[float]) -> tuple[str, callable]:
+    """
+    Trim audio to the specified time range using ffmpeg.
+    Returns (temp_file_path, cleanup_function).
+    """
+    import subprocess
+
+    # Create a temporary file with the same extension
+    ext = os.path.splitext(audio_path)[1] or ".wav"
+    temp_fd, temp_path = tempfile.mkstemp(suffix=ext)
+    os.close(temp_fd)
+
+    def cleanup():
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", audio_path,
+            "-ss", str(start),
+        ]
+        if end is not None:
+            cmd.extend(["-to", str(end)])
+        cmd.extend([
+            "-c", "copy",  # Fast copy without re-encoding
+            temp_path
+        ])
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # Try again with re-encoding (some formats need it for precise seeking)
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", audio_path,
+                "-ss", str(start),
+            ]
+            if end is not None:
+                cmd.extend(["-to", str(end)])
+            cmd.append(temp_path)
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                cleanup()
+                raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+
+        return temp_path, cleanup
+
+    except Exception:
+        cleanup()
+        raise
+
+
+def offset_timestamps(result: dict, offset: float) -> dict:
+    """Add offset to all timestamps in the alignment result."""
+    for segment in result.get("segments", []):
+        segment["start"] = segment.get("start", 0) + offset
+        segment["end"] = segment.get("end", 0) + offset
+        for word in segment.get("words", []):
+            word["start"] = word.get("start", 0) + offset
+            word["end"] = word.get("end", 0) + offset
+    return result
 
 
 def align_with_whisperx(
@@ -194,28 +275,46 @@ def main():
     )
     parser.add_argument("--model", default="base", help="Whisper model size")
     parser.add_argument("--language", help="Language code (e.g., 'en')")
+    parser.add_argument("--start", type=float, help="Start time in seconds (for subrange alignment)")
+    parser.add_argument("--end", type=float, help="End time in seconds (for subrange alignment)")
 
     args = parser.parse_args()
+
+    # Print immediately so the UI shows activity during slow imports
+    progress("Initializing...")
+
+    cleanup_func = None
+    audio_path = args.audio
+    time_offset = 0.0
 
     try:
         # Get transcript from --text or --text-file
         transcript = args.text
         if args.text_file:
-            import os
             expanded = os.path.expanduser(args.text_file)
             with open(expanded, "r", encoding="utf-8") as f:
                 transcript = f.read().strip()
+
+        # If start/end specified, trim audio first
+        if args.start is not None and args.start > 0:
+            progress(f"Trimming audio from {args.start}s to {args.end or 'end'}s...")
+            audio_path, cleanup_func = trim_audio(args.audio, args.start, args.end)
+            time_offset = args.start
 
         if args.tool == "whisperx":
             if not transcript:
                 raise ValueError("whisperx requires --text or --text-file for alignment")
             result = align_with_whisperx(
-                args.audio, transcript, args.model, args.language
+                audio_path, transcript, args.model, args.language
             )
         else:
             result = align_with_stable_ts(
-                args.audio, transcript, args.model, args.language
+                audio_path, transcript, args.model, args.language
             )
+
+        # Add time offset to all timestamps if we trimmed
+        if time_offset > 0:
+            result = offset_timestamps(result, time_offset)
 
         # Output JSON to stdout
         print(json.dumps(result, indent=2))
@@ -223,6 +322,10 @@ def main():
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
+
+    finally:
+        if cleanup_func:
+            cleanup_func()
 
 
 if __name__ == "__main__":
