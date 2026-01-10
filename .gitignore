@@ -24,3 +24,6 @@ data.json
 
 # Test vault (contains personal audio files)
 test-vault
+
+# Cache
+cache

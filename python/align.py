@@ -140,10 +140,11 @@ def align_with_stable_ts(
     if transcript:
         progress("Aligning transcript...")
         # Use align method for forced alignment with provided transcript
+        # Language is required for alignment, default to English
         result = model.align(
             audio_path,
             transcript,
-            language=language,
+            language=language or "en",
         )
     else:
         progress("Transcribing audio...")

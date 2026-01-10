@@ -22,10 +22,23 @@ export class AudioManager {
 
 	private constructor(private app: App) {}
 
-	static getInstance(app?: App): AudioManager {
+	/**
+	 * Initialize the singleton with the app. Must be called once in onload().
+	 */
+	static initialize(app: App): AudioManager {
+		if (AudioManager.instance) {
+			throw new Error("AudioManager already initialized");
+		}
+		AudioManager.instance = new AudioManager(app);
+		return AudioManager.instance;
+	}
+
+	/**
+	 * Get the singleton instance. Throws if not initialized.
+	 */
+	static getInstance(): AudioManager {
 		if (!AudioManager.instance) {
-			if (!app) throw new Error("AudioManager requires App on first call");
-			AudioManager.instance = new AudioManager(app);
+			throw new Error("AudioManager not initialized. Call initialize() in onload() first.");
 		}
 		return AudioManager.instance;
 	}

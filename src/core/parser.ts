@@ -102,6 +102,20 @@ export function parseTranscriptDirectives(markdown: string): TranscriptDirective
 			const position = containerDirective.position;
 
 			if (audioPath && position) {
+				// Find where content starts (after opening fence line)
+				let contentFrom = position.start.offset ?? 0;
+				const firstChild = contentChildren[0];
+				if (firstChild?.position?.start?.offset !== undefined) {
+					contentFrom = firstChild.position.start.offset;
+				} else {
+					// Fallback: find first newline after directive start
+					const directiveStart = position.start.offset ?? 0;
+					const newlinePos = markdown.indexOf("\n", directiveStart);
+					if (newlinePos !== -1) {
+						contentFrom = newlinePos + 1;
+					}
+				}
+
 				directives.push({
 					audioPath,
 					attributes: parseTimeAttributes(
@@ -110,6 +124,7 @@ export function parseTranscriptDirectives(markdown: string): TranscriptDirective
 					content,
 					from: position.start.offset ?? 0,
 					to: position.end.offset ?? markdown.length,
+					contentFrom,
 				});
 			}
 		}

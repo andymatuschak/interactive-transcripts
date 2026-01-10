@@ -48,6 +48,20 @@
 	font-family: var(--font-monospace);
 }
 
+/* Pulsing animation when alignment is generating */
+.transcript-content-line.transcript-aligning {
+	animation: transcript-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes transcript-pulse {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.4;
+	}
+}
+
 /* First content line: anchor for play button */
 .transcript-first-content {
 	position: relative;
@@ -89,6 +103,10 @@
 
 .transcript-play-button:active {
 	transform: scale(0.95);
+}
+
+.transcript-play-button.transcript-generating {
+	cursor: wait;
 }
 
 /* Floating playback controls */
@@ -206,57 +224,10 @@
 	pointer-events: none;
 }
 
-/* Alignment modal */
-.transcript-alignment-modal {
-	max-width: 400px;
-}
 
-.transcript-alignment-info {
-	margin-bottom: 16px;
-	color: var(--text-muted);
-	font-size: 13px;
-}
-
-.transcript-alignment-info p {
-	margin: 4px 0;
-}
-
-.transcript-alignment-status {
-	margin-bottom: 16px;
-	font-weight: 500;
-}
-
-.transcript-alignment-progress {
-	margin-bottom: 16px;
-}
-
-.transcript-progress-bar {
-	height: 4px;
-	background: var(--background-modifier-border);
+/* Word highlight during playback */
+.transcript-word-highlight {
+	background-color: var(--text-highlight-bg);
 	border-radius: 2px;
-	overflow: hidden;
-}
-
-.transcript-progress-fill {
-	height: 100%;
-	background: var(--interactive-accent);
-	width: 100%;
-	animation: transcript-progress-indeterminate 1.5s ease-in-out infinite;
-}
-
-@keyframes transcript-progress-indeterminate {
-	0% {
-		transform: translateX(-100%);
-	}
-	50% {
-		transform: translateX(0%);
-	}
-	100% {
-		transform: translateX(100%);
-	}
-}
-
-.transcript-alignment-buttons {
-	display: flex;
-	justify-content: flex-end;
+	padding: 1px 0;
 }

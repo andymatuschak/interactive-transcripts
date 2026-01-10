@@ -17,6 +17,8 @@ export interface TranscriptDirective {
 	from: number;
 	/** End position in source document (byte offset) */
 	to: number;
+	/** Start position of content within the document (after opening fence) */
+	contentFrom: number;
 }
 
 /**

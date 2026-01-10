@@ -8,8 +8,9 @@ import {
 import { Range } from "@codemirror/state";
 import { transcriptField } from "./state";
 import { PlayButtonWidget } from "./widgets";
+import { AlignmentManager } from "../alignment/alignmentManager";
 
-function buildDecorations(view: EditorView): DecorationSet {
+function buildDecorations(view: EditorView, aligningPaths: Set<string>): DecorationSet {
 	const decorations: Range<Decoration>[] = [];
 	const { directives } = view.state.field(transcriptField);
 	const cursorPos = view.state.selection.main.head;
@@ -18,7 +19,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 		const startLine = view.state.doc.lineAt(directive.from);
 		const endLine = view.state.doc.lineAt(directive.to);
 		const isActive = cursorPos >= directive.from && cursorPos <= directive.to;
+		const isAligning = aligningPaths.has(directive.audioPath);
 		const activeClass = isActive ? " transcript-active" : "";
+		const aligningClass = isAligning ? " transcript-aligning" : "";
 
 		// Style the opening fence line
 		decorations.push(
@@ -38,7 +41,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 			const isFirstContent = lineNum === firstContentLineNum;
 			decorations.push(
 				Decoration.line({
-					class: `transcript-content-line${isFirstContent ? " transcript-first-content" : ""}${activeClass}`,
+					class: `transcript-content-line${isFirstContent ? " transcript-first-content" : ""}${activeClass}${aligningClass}`,
 				}).range(line.from)
 			);
 
@@ -70,9 +73,31 @@ function buildDecorations(view: EditorView): DecorationSet {
 export const transcriptViewPlugin = ViewPlugin.fromClass(
 	class {
 		decorations: DecorationSet;
+		private aligningPaths: Set<string> = new Set();
+		private unsubscribe: (() => void) | null = null;
 
-		constructor(view: EditorView) {
-			this.decorations = buildDecorations(view);
+		constructor(private view: EditorView) {
+			this.decorations = buildDecorations(view, this.aligningPaths);
+			this.subscribeToAlignmentStatus();
+		}
+
+		private subscribeToAlignmentStatus() {
+			const manager = AlignmentManager.getInstance();
+
+			this.unsubscribe = manager.subscribeToStatus((audioPath, progress) => {
+				const wasAligning = this.aligningPaths.has(audioPath);
+				const isAligning = progress.status === "pending" || progress.status === "generating";
+
+				if (isAligning && !wasAligning) {
+					this.aligningPaths.add(audioPath);
+					this.decorations = buildDecorations(this.view, this.aligningPaths);
+					this.view.dispatch({});
+				} else if (!isAligning && wasAligning) {
+					this.aligningPaths.delete(audioPath);
+					this.decorations = buildDecorations(this.view, this.aligningPaths);
+					this.view.dispatch({});
+				}
+			});
 		}
 
 		update(update: ViewUpdate) {
@@ -81,8 +106,12 @@ export const transcriptViewPlugin = ViewPlugin.fromClass(
 				update.viewportChanged ||
 				update.selectionSet
 			) {
-				this.decorations = buildDecorations(update.view);
+				this.decorations = buildDecorations(update.view, this.aligningPaths);
 			}
+		}
+
+		destroy() {
+			this.unsubscribe?.();
 		}
 	},
 	{

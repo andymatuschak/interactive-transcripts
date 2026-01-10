@@ -2,7 +2,7 @@ import { App, TFile } from "obsidian";
 import type { AlignmentData } from "../types";
 import { hashFile, hashString, generateCacheKey } from "../core/hash";
 
-const CACHE_DIR = ".obsidian/plugins/markdown-audio-transcripts/cache";
+const CACHE_DIR = ".obsidian/plugins/obsidian-transcript/cache";
 
 /**
  * Manages caching of alignment data.
