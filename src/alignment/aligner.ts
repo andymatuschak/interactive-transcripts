@@ -1,9 +1,9 @@
-import { App, TFile, FileSystemAdapter } from "obsidian";
-import type { AlignmentData } from "../types";
-import { runSubprocess, SubprocessResult } from "./subprocess";
-import { hashFile, hashString } from "../core/hash";
-import * as path from "path";
+import { ChildProcess, spawn } from "child_process";
 import * as fs from "fs";
+import { App, FileSystemAdapter, TFile } from "obsidian";
+import * as path from "path";
+import { hashFile, hashString } from "../core/hash";
+import type { AlignmentData } from "../types";
 
 export type AlignmentTool = "whisperx" | "stable-ts";
 
@@ -31,8 +31,8 @@ function findUvPath(): string {
 		`${process.env.HOME}/.local/bin/uv`,
 	];
 
-	for (const path of candidates) {
-		if (fs.existsSync(path)) return path;
+	for (const p of candidates) {
+		if (fs.existsSync(p)) return p;
 	}
 	return "uv";
 }
@@ -61,6 +61,14 @@ function parseProgressOutput(message: string): AlignmentProgressInfo | null {
 		return { phase: "loading", percent: 5 };
 	}
 
+	if (message.includes("Aligning")) {
+		return { phase: "aligning", percent: 0 };
+	}
+
+	if (message.includes("Server ready")) {
+		return { phase: "loading", percent: 10 };
+	}
+
 	return null;
 }
 
@@ -78,26 +86,259 @@ export interface AlignerOptions {
 	signal?: AbortSignal;
 }
 
+interface AlignRequest {
+	action: "align";
+	audio: string;
+	text: string;
+	tool: string;
+	model: string;
+	language?: string;
+	start?: number;
+	end?: number;
+}
+
+interface AlignResponse {
+	status: "ok" | "error" | "shutdown";
+	result?: AlignmentData;
+	message?: string;
+}
+
 /**
  * Handles word-level alignment of audio with transcript text.
- *
- * This class only runs the alignment subprocess. Cache management is handled
- * by AlignmentManager.
+ * Uses a persistent Python server process for fast subsequent alignments.
  */
 export class Aligner {
+	private serverProcess: ChildProcess | null = null;
+	private serverReady = false;
+	private idleTimer: NodeJS.Timeout | null = null;
+	private pendingResponse: {
+		resolve: (data: AlignResponse) => void;
+		reject: (err: Error) => void;
+		onProgress?: (info: AlignmentProgressInfo) => void;
+	} | null = null;
+	private responseBuffer = "";
+
+	private readonly IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 	constructor(private app: App) {}
 
 	/**
-	 * Get the path to the Python alignment script.
+	 * Get the path to the Python alignment server script.
 	 */
-	private getScriptPath(): string {
+	private getServerScriptPath(): string {
 		const adapter = this.app.vault.adapter;
 		if (!(adapter instanceof FileSystemAdapter)) {
 			throw new Error("Alignment requires a file system adapter");
 		}
 		const basePath = adapter.getBasePath();
 		const pluginDir = path.join(basePath, ".obsidian", "plugins", "obsidian-transcript");
-		return path.join(pluginDir, "python", "align.py");
+		return path.join(pluginDir, "python", "alignServer.py");
+	}
+
+	/**
+	 * Get the Python project directory (for uv).
+	 */
+	private getPythonDir(): string {
+		return path.dirname(this.getServerScriptPath());
+	}
+
+	/**
+	 * Start the alignment server if not already running.
+	 */
+	private async ensureServer(onProgress?: (info: AlignmentProgressInfo) => void): Promise<void> {
+		if (this.serverProcess && this.serverReady) {
+			this.resetIdleTimer();
+			return;
+		}
+
+		// Kill any existing non-ready server
+		if (this.serverProcess) {
+			this.serverProcess.kill();
+			this.serverProcess = null;
+		}
+
+		const uvPath = findUvPath();
+		const scriptPath = this.getServerScriptPath();
+		const pythonDir = this.getPythonDir();
+
+		// Augment PATH to include common locations for ffmpeg
+		const extraPaths = ["/opt/homebrew/bin", "/usr/local/bin"];
+		const currentPath = process.env.PATH || "";
+		const augmentedPath = [...extraPaths, currentPath].join(":");
+
+		return new Promise((resolve, reject) => {
+			this.serverProcess = spawn(
+				uvPath,
+				["run", "--project", pythonDir, "python", scriptPath],
+				{
+					stdio: ["pipe", "pipe", "pipe"],
+					env: { ...process.env, PATH: augmentedPath },
+				}
+			);
+
+			let startupError = "";
+
+			this.serverProcess.stderr?.on("data", (data: Buffer) => {
+				const text = data.toString();
+				// Parse progress messages (split by \n or \r for tqdm updates)
+				for (const line of text.split(/[\n\r]+/)) {
+					if (!line.trim()) continue;
+					const progress = parseProgressOutput(line);
+					if (progress) {
+						if (this.pendingResponse?.onProgress) {
+							this.pendingResponse.onProgress(progress);
+						} else if (onProgress) {
+							onProgress(progress);
+						}
+					}
+					if (line.includes("Server ready")) {
+						this.serverReady = true;
+						this.resetIdleTimer();
+						resolve();
+					}
+				}
+				// Collect for error reporting
+				startupError += text;
+			});
+
+			this.serverProcess.stdout?.on("data", (data: Buffer) => {
+				this.responseBuffer += data.toString();
+				this.processResponseBuffer();
+			});
+
+			this.serverProcess.on("error", (err) => {
+				this.serverReady = false;
+				this.serverProcess = null;
+				if (this.pendingResponse) {
+					this.pendingResponse.reject(err);
+					this.pendingResponse = null;
+				} else {
+					reject(err);
+				}
+			});
+
+			this.serverProcess.on("exit", (code) => {
+				this.serverReady = false;
+				this.serverProcess = null;
+				if (this.pendingResponse) {
+					this.pendingResponse.reject(new Error(`Server exited with code ${code}`));
+					this.pendingResponse = null;
+				}
+			});
+
+			// Timeout for server startup
+			setTimeout(() => {
+				if (!this.serverReady) {
+					this.serverProcess?.kill();
+					this.serverProcess = null;
+					reject(new Error(`Server startup timeout. Stderr: ${startupError}`));
+				}
+			}, 30000);
+		});
+	}
+
+	/**
+	 * Process buffered responses from stdout.
+	 */
+	private processResponseBuffer(): void {
+		const lines = this.responseBuffer.split("\n");
+		// Keep incomplete last line in buffer
+		this.responseBuffer = lines.pop() || "";
+
+		for (const line of lines) {
+			if (!line.trim()) continue;
+			try {
+				const response: AlignResponse = JSON.parse(line);
+				if (this.pendingResponse) {
+					this.pendingResponse.resolve(response);
+					this.pendingResponse = null;
+				}
+			} catch {
+				// Ignore non-JSON lines
+			}
+		}
+	}
+
+	/**
+	 * Send a request to the server and wait for response.
+	 */
+	private async sendRequest(
+		request: AlignRequest,
+		onProgress?: (info: AlignmentProgressInfo) => void,
+		signal?: AbortSignal
+	): Promise<AlignResponse> {
+		if (!this.serverProcess || !this.serverReady) {
+			throw new Error("Server not ready");
+		}
+
+		return new Promise((resolve, reject) => {
+			// Handle abort
+			if (signal?.aborted) {
+				reject(new Error("Aborted"));
+				return;
+			}
+
+			const abortHandler = () => {
+				if (this.pendingResponse) {
+					this.pendingResponse = null;
+					reject(new Error("Aborted"));
+				}
+			};
+			signal?.addEventListener("abort", abortHandler);
+
+			this.pendingResponse = {
+				resolve: (data) => {
+					signal?.removeEventListener("abort", abortHandler);
+					resolve(data);
+				},
+				reject: (err) => {
+					signal?.removeEventListener("abort", abortHandler);
+					reject(err);
+				},
+				onProgress,
+			};
+
+			this.serverProcess!.stdin?.write(JSON.stringify(request) + "\n");
+		});
+	}
+
+	/**
+	 * Reset the idle timer.
+	 */
+	private resetIdleTimer(): void {
+		if (this.idleTimer) {
+			clearTimeout(this.idleTimer);
+		}
+		this.idleTimer = setTimeout(() => {
+			this.shutdown();
+		}, this.IDLE_TIMEOUT_MS);
+	}
+
+	/**
+	 * Shutdown the server.
+	 */
+	shutdown(): void {
+		if (this.idleTimer) {
+			clearTimeout(this.idleTimer);
+			this.idleTimer = null;
+		}
+
+		if (this.serverProcess) {
+			// Try graceful shutdown
+			try {
+				this.serverProcess.stdin?.write(JSON.stringify({ action: "shutdown" }) + "\n");
+			} catch {
+				// Ignore write errors
+			}
+			// Force kill after a short delay
+			setTimeout(() => {
+				if (this.serverProcess) {
+					this.serverProcess.kill();
+					this.serverProcess = null;
+				}
+			}, 1000);
+			this.serverReady = false;
+		}
 	}
 
 	/**
@@ -117,72 +358,49 @@ export class Aligner {
 		const basePath = adapter.getBasePath();
 		const audioPath = path.join(basePath, audioFile.path);
 
-		// Build arguments for Python script
-		const args = [
-			"--audio", audioPath,
-			"--text", transcriptText,
-			"--tool", options.tool,
-			"--model", options.model,
-		];
+		// Ensure server is running
+		await this.ensureServer(options.onProgress);
+
+		// Build request
+		const request: AlignRequest = {
+			action: "align",
+			audio: audioPath,
+			text: transcriptText,
+			tool: options.tool,
+			model: options.model,
+		};
 
 		if (options.language) {
-			args.push("--language", options.language);
+			request.language = options.language;
 		}
 
 		if (options.start !== undefined) {
-			args.push("--start", String(options.start));
+			request.start = options.start;
 		}
 
 		if (options.end !== undefined) {
-			args.push("--end", String(options.end));
+			request.end = options.end;
 		}
 
-		const scriptPath = this.getScriptPath();
-		const pythonDir = path.dirname(scriptPath);
-		const uvPath = findUvPath();
+		// Send request and wait for response
+		const response = await this.sendRequest(request, options.onProgress, options.signal);
 
-		let result: SubprocessResult;
-		try {
-			result = await runSubprocess(
-				uvPath,
-				["run", "--project", pythonDir, "python", scriptPath, ...args],
-				{
-					timeout: 10 * 60 * 1000,
-					signal: options.signal,
-					onStderr: (data) => {
-						// Parse progress from stderr and call structured callback
-						const progress = parseProgressOutput(data);
-						if (progress && options.onProgress) {
-							options.onProgress(progress);
-						}
-					},
-				}
-			);
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			if (message === "Aborted") {
-				throw err; // Re-throw abort errors as-is
-			}
-			throw new Error(`Alignment failed: ${message}`);
+		if (response.status === "error") {
+			throw new Error(`Alignment failed: ${response.message}`);
 		}
 
-		if (result.exitCode !== 0) {
-			throw new Error(`Alignment failed with exit code ${result.exitCode}: ${result.stderr}`);
-		}
-
-		// Parse the JSON output
-		let alignmentResult: AlignmentData;
-		try {
-			alignmentResult = JSON.parse(result.stdout);
-		} catch {
-			throw new Error(`Failed to parse alignment output: ${result.stdout.slice(0, 200)}`);
+		if (!response.result) {
+			throw new Error("No result in alignment response");
 		}
 
 		// Add metadata
+		const alignmentResult = response.result;
 		alignmentResult.audioHash = await hashFile(this.app.vault, audioFile);
 		alignmentResult.transcriptHash = await hashString(transcriptText);
 		alignmentResult.tool = options.tool;
 		alignmentResult.createdAt = Date.now();
+
+		this.resetIdleTimer();
 
 		return alignmentResult;
 	}

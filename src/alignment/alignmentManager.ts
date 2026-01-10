@@ -267,5 +267,8 @@ export class AlignmentManager {
 		this.queue = [];
 
 		this.statusListeners.clear();
+
+		// Shutdown the alignment server
+		this.aligner.shutdown();
 	}
 }
