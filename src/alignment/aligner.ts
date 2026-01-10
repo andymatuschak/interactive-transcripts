@@ -24,25 +24,16 @@ export interface AlignmentProgressInfo {
  * Find the uv executable in common locations.
  */
 function findUvPath(): string {
-	const possiblePaths = [
-		"/opt/homebrew/bin/uv",      // macOS ARM Homebrew
-		"/usr/local/bin/uv",         // macOS Intel Homebrew
-		`${process.env.HOME}/.cargo/bin/uv`,  // Cargo install
-		`${process.env.HOME}/.local/bin/uv`,  // pipx or manual install
-		"uv",                         // Fall back to PATH
+	const candidates = [
+		"/opt/homebrew/bin/uv",
+		"/usr/local/bin/uv",
+		`${process.env.HOME}/.cargo/bin/uv`,
+		`${process.env.HOME}/.local/bin/uv`,
 	];
 
-	for (const uvPath of possiblePaths) {
-		if (uvPath === "uv") return uvPath; // Last resort
-		try {
-			if (fs.existsSync(uvPath)) {
-				return uvPath;
-			}
-		} catch {
-			// Continue to next path
-		}
+	for (const path of candidates) {
+		if (fs.existsSync(path)) return path;
 	}
-
 	return "uv";
 }
 

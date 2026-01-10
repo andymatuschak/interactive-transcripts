@@ -71,27 +71,14 @@ class AlignmentStore {
 	 * Find the word at a given time.
 	 */
 	findWordAtTime(audioPath: string, content: string, time: number): AlignedWord | null {
-		const words = this.getWords(audioPath, content);
-		for (const word of words) {
-			if (time >= word.start && time <= word.end) {
-				return word;
-			}
-		}
-		return null;
+		return this.getWords(audioPath, content).find(w => time >= w.start && time <= w.end) ?? null;
 	}
 
 	/**
 	 * Find the word index at a given time.
 	 */
 	findWordIndexAtTime(audioPath: string, content: string, time: number): number {
-		const words = this.getWords(audioPath, content);
-		for (let i = 0; i < words.length; i++) {
-			const word = words[i];
-			if (word && time >= word.start && time <= word.end) {
-				return i;
-			}
-		}
-		return -1;
+		return this.getWords(audioPath, content).findIndex(w => time >= w.start && time <= w.end);
 	}
 }
 

@@ -4,6 +4,12 @@ import { AudioManager } from "../playback/audioManager";
 import { AlignmentManager, AlignmentProgress } from "../alignment/alignmentManager";
 import type { TranscriptDirective } from "../types";
 
+function setSvgAttrs(el: SVGElement, attrs: Record<string, string>): void {
+	for (const [key, value] of Object.entries(attrs)) {
+		el.setAttribute(key, value);
+	}
+}
+
 /**
  * Create an SVG radial progress indicator.
  */
@@ -13,36 +19,26 @@ function createRadialProgress(percent: number): SVGElement {
 	const radius = (size - strokeWidth) / 2;
 	const circumference = 2 * Math.PI * radius;
 	const offset = circumference - (percent / 100) * circumference;
+	const center = String(size / 2);
 
 	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-	svg.setAttribute("width", String(size));
-	svg.setAttribute("height", String(size));
-	svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+	setSvgAttrs(svg, { width: String(size), height: String(size), viewBox: `0 0 ${size} ${size}` });
 	svg.classList.add("transcript-radial-progress");
 
-	// Background circle
 	const bgCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-	bgCircle.setAttribute("cx", String(size / 2));
-	bgCircle.setAttribute("cy", String(size / 2));
-	bgCircle.setAttribute("r", String(radius));
-	bgCircle.setAttribute("fill", "none");
-	bgCircle.setAttribute("stroke", "currentColor");
-	bgCircle.setAttribute("stroke-width", String(strokeWidth));
-	bgCircle.setAttribute("opacity", "0.3");
+	setSvgAttrs(bgCircle, {
+		cx: center, cy: center, r: String(radius),
+		fill: "none", stroke: "currentColor", "stroke-width": String(strokeWidth), opacity: "0.3",
+	});
 	svg.appendChild(bgCircle);
 
-	// Progress circle
 	const progressCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-	progressCircle.setAttribute("cx", String(size / 2));
-	progressCircle.setAttribute("cy", String(size / 2));
-	progressCircle.setAttribute("r", String(radius));
-	progressCircle.setAttribute("fill", "none");
-	progressCircle.setAttribute("stroke", "currentColor");
-	progressCircle.setAttribute("stroke-width", String(strokeWidth));
-	progressCircle.setAttribute("stroke-linecap", "round");
-	progressCircle.setAttribute("stroke-dasharray", String(circumference));
-	progressCircle.setAttribute("stroke-dashoffset", String(offset));
-	progressCircle.setAttribute("transform", `rotate(-90 ${size / 2} ${size / 2})`);
+	setSvgAttrs(progressCircle, {
+		cx: center, cy: center, r: String(radius),
+		fill: "none", stroke: "currentColor", "stroke-width": String(strokeWidth),
+		"stroke-linecap": "round", "stroke-dasharray": String(circumference),
+		"stroke-dashoffset": String(offset), transform: `rotate(-90 ${center} ${center})`,
+	});
 	svg.appendChild(progressCircle);
 
 	return svg;

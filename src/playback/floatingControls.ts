@@ -36,13 +36,16 @@ export const floatingControlsPlugin = ViewPlugin.define((view) => {
 	scrubber.max = "1000";
 	scrubber.value = "0";
 
+	const updateScrubberFill = (percent: number) => {
+		scrubber.style.background = `linear-gradient(to right, var(--interactive-accent) ${percent}%, var(--background-modifier-border) ${percent}%)`;
+	};
+
 	scrubber.addEventListener("input", () => {
 		isDragging = true;
 		const state = audioManager.getState();
 		const time = (parseFloat(scrubber.value) / 1000) * state.duration;
 		audioManager.seekTo(time);
-		const percent = (parseFloat(scrubber.value) / 1000) * 100;
-		scrubber.style.background = `linear-gradient(to right, var(--interactive-accent) ${percent}%, var(--background-modifier-border) ${percent}%)`;
+		updateScrubberFill((parseFloat(scrubber.value) / 1000) * 100);
 	});
 
 	scrubber.addEventListener("change", () => {
@@ -96,8 +99,7 @@ export const floatingControlsPlugin = ViewPlugin.define((view) => {
 		}
 
 		// Update scrubber fill color
-		const percent = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0;
-		scrubber.style.background = `linear-gradient(to right, var(--interactive-accent) ${percent}%, var(--background-modifier-border) ${percent}%)`;
+		updateScrubberFill(state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0);
 
 		// Update time displays
 		currentTimeDisplay.textContent = formatTime(state.currentTime);

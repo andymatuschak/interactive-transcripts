@@ -81,6 +81,11 @@ export const transcriptViewPlugin = ViewPlugin.fromClass(
 			this.subscribeToAlignmentStatus();
 		}
 
+		private rebuildDecorations() {
+			this.decorations = buildDecorations(this.view, this.aligningPaths);
+			this.view.dispatch({});
+		}
+
 		private subscribeToAlignmentStatus() {
 			const manager = AlignmentManager.getInstance();
 
@@ -88,24 +93,19 @@ export const transcriptViewPlugin = ViewPlugin.fromClass(
 				const wasAligning = this.aligningPaths.has(audioPath);
 				const isAligning = progress.status === "pending" || progress.status === "generating";
 
-				if (isAligning && !wasAligning) {
-					this.aligningPaths.add(audioPath);
-					this.decorations = buildDecorations(this.view, this.aligningPaths);
-					this.view.dispatch({});
-				} else if (!isAligning && wasAligning) {
-					this.aligningPaths.delete(audioPath);
-					this.decorations = buildDecorations(this.view, this.aligningPaths);
-					this.view.dispatch({});
+				if (isAligning !== wasAligning) {
+					if (isAligning) {
+						this.aligningPaths.add(audioPath);
+					} else {
+						this.aligningPaths.delete(audioPath);
+					}
+					this.rebuildDecorations();
 				}
 			});
 		}
 
 		update(update: ViewUpdate) {
-			if (
-				update.docChanged ||
-				update.viewportChanged ||
-				update.selectionSet
-			) {
+			if (update.docChanged || update.viewportChanged || update.selectionSet) {
 				this.decorations = buildDecorations(update.view, this.aligningPaths);
 			}
 		}
