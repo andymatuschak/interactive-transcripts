@@ -37,9 +37,18 @@
       cursor: pointer;
     }
   </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "@codemirror/state": "https://esm.sh/@codemirror/state@6",
+      "@codemirror/view": "https://esm.sh/@codemirror/view@6",
+      "@codemirror/commands": "https://esm.sh/@codemirror/commands@6"
+    }
+  }
+  </script>
 </head>
 <body>
-  <h1>CodeMirror Double-Enter Test</h1>
+  <h1>Transcript Split Test Harness</h1>
   <div class="controls">
     <button onclick="logState()">Log State</button>
     <button onclick="clearDebug()">Clear Debug</button>
@@ -48,9 +57,16 @@
   <div id="debug"></div>
 
   <script type="module">
-    import { EditorState } from "https://esm.sh/@codemirror/state@6";
-    import { EditorView, keymap } from "https://esm.sh/@codemirror/view@6";
-    import { defaultKeymap } from "https://esm.sh/@codemirror/commands@6";
+    import { EditorState } from "@codemirror/state";
+    import { EditorView, keymap } from "@codemirror/view";
+    import { defaultKeymap } from "@codemirror/commands";
+
+    // Import real extensions from our bundle
+    import {
+      doubleEnterSplitExtension,
+      transcriptField,
+      alignmentStore
+    } from "./bundle.js";
 
     const debugEl = document.getElementById('debug');
 
@@ -61,98 +77,6 @@
     }
 
     window.clearDebug = () => { debugEl.textContent = ''; };
-
-    // Simulate transcript field
-    function parseDirectives(doc) {
-      const text = doc.toString();
-      const directives = [];
-      const regex = /:::transcript\[([^\]]+)\](?:\{([^}]*)\})?\n([\s\S]*?)\n:::/g;
-      let match;
-      while ((match = regex.exec(text)) !== null) {
-        const [full, audioPath, attrs, content] = match;
-        directives.push({
-          audioPath,
-          attributes: parseAttrs(attrs || ''),
-          content,
-          from: match.index,
-          to: match.index + full.length,
-          contentFrom: match.index + full.indexOf(content),
-        });
-      }
-      return directives;
-    }
-
-    function parseAttrs(str) {
-      const attrs = {};
-      const startMatch = str.match(/start=([\d.]+)/);
-      const endMatch = str.match(/end=([\d.]+)/);
-      if (startMatch) attrs.start = parseFloat(startMatch[1]);
-      if (endMatch) attrs.end = parseFloat(endMatch[1]);
-      return attrs;
-    }
-
-    // Fake alignment store
-    const alignmentStore = new Map();
-    window.alignmentStore = alignmentStore;
-
-    // Double-enter tracking
-    let lastEnterTime = 0;
-    let lastEnterPos = -1;
-
-    function handleEnter(view) {
-      const now = Date.now();
-      const cursor = view.state.selection.main.head;
-      const timeDiff = now - lastEnterTime;
-      const posDiff = Math.abs(cursor - lastEnterPos);
-
-      debug(`Enter pressed at ${cursor}, lastPos=${lastEnterPos}, timeDiff=${timeDiff}ms, posDiff=${posDiff}`);
-
-      const isDoubleEnter = timeDiff < 500 && posDiff <= 1 && lastEnterPos >= 0;
-      debug(`isDoubleEnter: ${isDoubleEnter}`);
-
-      if (isDoubleEnter) {
-        const directives = parseDirectives(view.state.doc);
-        debug(`Found ${directives.length} directives`);
-
-        const directive = directives.find(d => cursor > d.contentFrom && cursor < d.to - 3);
-        debug(`Directive at cursor: ${directive ? 'yes' : 'no'}`);
-
-        if (directive) {
-          debug(`Directive: from=${directive.from}, to=${directive.to}, contentFrom=${directive.contentFrom}`);
-          debug(`Content: "${directive.content.slice(0, 50)}..."`);
-
-          // Reconstruct original content
-          const newlineOffset = lastEnterPos - directive.contentFrom;
-          debug(`newlineOffset: ${newlineOffset}`);
-
-          const originalContent =
-            directive.content.slice(0, newlineOffset) +
-            directive.content.slice(newlineOffset + 1);
-          debug(`Original content: "${originalContent.slice(0, 50)}..."`);
-
-          const alignment = alignmentStore.get(directive.audioPath + '\0' + originalContent);
-          debug(`Alignment found: ${alignment ? 'yes' : 'no'}`);
-
-          if (alignment) {
-            debug('Would perform split here!');
-            // Reset
-            lastEnterTime = 0;
-            lastEnterPos = -1;
-            return true;
-          }
-        }
-      }
-
-      lastEnterTime = now;
-      lastEnterPos = cursor;
-      debug(`Updated tracking: time=${now}, pos=${cursor}`);
-
-      return false; // Let default handle it
-    }
-
-    const doubleEnterKeymap = keymap.of([
-      { key: "Enter", run: handleEnter }
-    ]);
 
     const initialDoc = `# Test Document
 
@@ -166,12 +90,18 @@ Some text after.
     const state = EditorState.create({
       doc: initialDoc,
       extensions: [
-        doubleEnterKeymap,
+        transcriptField,
+        doubleEnterSplitExtension,
         keymap.of(defaultKeymap),
         EditorView.theme({
           "&": { backgroundColor: "#1e1e1e", color: "#d4d4d4" },
           ".cm-content": { caretColor: "#fff" },
           ".cm-cursor": { borderLeftColor: "#fff" },
+        }),
+        EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            debug("Document changed");
+          }
         }),
       ],
     });
@@ -182,15 +112,26 @@ Some text after.
     });
 
     window.view = view;
+    window.alignmentStore = alignmentStore;
+
     window.logState = () => {
-      const directives = parseDirectives(view.state.doc);
-      debug(`Current directives: ${JSON.stringify(directives, null, 2)}`);
+      const field = view.state.field(transcriptField);
+      debug(`Directives: ${JSON.stringify(field.directives, null, 2)}`);
     };
 
-    // Add a fake alignment
+    // Add fake alignment for the test content
     const fakeContent = "Hello world this is a test transcript with some words.";
-    alignmentStore.set('test.m4a\0' + fakeContent, {
+    const fakeAlignment = {
+      audioHash: "test123",
+      transcriptHash: "test456",
+      language: "en",
+      tool: "test",
+      createdAt: Date.now(),
+      text: fakeContent,
       segments: [{
+        start: 0,
+        end: 5,
+        text: fakeContent,
         words: [
           { word: "Hello", start: 0, end: 0.5 },
           { word: "world", start: 0.5, end: 1 },
@@ -204,10 +145,20 @@ Some text after.
           { word: "words.", start: 4.5, end: 5 },
         ]
       }]
-    });
+    };
 
-    debug('Test harness loaded. Click in the transcript content and press Enter twice quickly.');
-    debug(`Alignment stored for content: "${fakeContent}"`);
+    alignmentStore.set("test.m4a", fakeContent, fakeAlignment);
+    debug('Test harness loaded with REAL extensions.');
+    debug(`Alignment stored for: "${fakeContent}"`);
+    debug('');
+    debug('To test double-enter split:');
+    debug('1. Click inside transcript content');
+    debug('2. Press Enter to insert a newline');
+    debug('3. Press Enter again (at start of new line) to split');
+    debug('');
+    debug('To test text replacement split:');
+    debug('1. Select some words in the transcript');
+    debug('2. Type replacement text');
   </script>
 </body>
 </html>

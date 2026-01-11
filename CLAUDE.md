@@ -36,3 +36,13 @@ bun test
 ```
 
 Test files use the `.test.ts` suffix and live alongside their source files.
+
+### Browser Test Harness
+
+The `test-harness/` directory contains an HTML page for testing CodeMirror extensions in isolation. To use:
+
+```bash
+cd test-harness && python3 -m http.server 8765
+```
+
+Then open `http://localhost:8765` in Chrome. Use Chrome MCP to automate testing.
