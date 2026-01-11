@@ -37,12 +37,32 @@ bun test
 
 Test files use the `.test.ts` suffix and live alongside their source files.
 
-### Browser Test Harness
+### Unit Testing Guidelines
 
-The `test-harness/` directory contains an HTML page for testing CodeMirror extensions in isolation. To use:
+**Always include unit tests for pure functions**, especially in:
+- `src/core/` - Parser, serializer, operations (split, delete, transform)
+- Any function that takes data in and returns data out without side effects
 
-```bash
-cd test-harness && python3 -m http.server 8765
+**CodeMirror state is testable directly.** `@codemirror/state` is pure - you can construct real `EditorState` and `Transaction` objects in tests:
+
+```typescript
+import { EditorState } from "@codemirror/state";
+
+const state = EditorState.create({ doc: "Hello world" });
+const tr = state.update({ changes: { from: 0, to: 5, insert: "" } });
+// Now test functions that take Transaction as input
 ```
 
-Then open `http://localhost:8765` in Chrome. Use Chrome MCP to automate testing.
+For very simple logic (string classification, range checks), extract to pure functions. For transaction-specific logic, test with real CM state objects.
+
+### Browser Test Harness
+
+The `test-harness/` directory contains an HTML page for testing CodeMirror extensions in isolation.
+
+```bash
+bun run harness        # Build and serve (http://localhost:8765)
+bun run harness:build  # Build bundle only
+bun run harness:serve  # Serve only (if bundle already built)
+```
+
+Use Chrome MCP to automate browser testing. The harness imports real extensions from the bundled code, so rebuild after making changes.

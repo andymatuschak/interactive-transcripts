@@ -7,7 +7,10 @@
 	"scripts": {
 		"dev": "bun run scripts/build-watch.ts",
 		"build": "tsc -noEmit -skipLibCheck && bun run scripts/build-prod.ts",
-		"test": "bun test"
+		"test": "bun test",
+		"harness:build": "bun build test-harness/test-entry.ts --outfile=test-harness/bundle.js --format=esm --external=@codemirror/state --external=@codemirror/view",
+		"harness:serve": "python3 -m http.server 8765 -d test-harness",
+		"harness": "bun run harness:build && bun run harness:serve"
 	},
 	"keywords": ["obsidian", "transcript", "audio", "alignment"],
 	"author": "Andy Matuschak",

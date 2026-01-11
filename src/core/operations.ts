@@ -1,6 +1,11 @@
 import type { TranscriptDirective, AlignmentData, AlignedSegment, AlignedWord } from "../types";
 import { serializeDirective } from "./serializer";
 
+export interface DeleteResult {
+	markdown: string;
+	alignment: AlignmentData;
+}
+
 export interface SplitResult {
 	beforeMarkdown: string;
 	afterMarkdown: string;
@@ -281,4 +286,165 @@ export function splitAlignmentData(
 	};
 
 	return { before, after };
+}
+
+/**
+ * Delete a range from a transcript, returning updated directive and alignment.
+ * Handles three cases:
+ * - Delete from start: adjusts start timestamp
+ * - Delete from end: adjusts end timestamp
+ * - Delete from middle (at word boundary): removes words from alignment
+ */
+export function deleteFromTranscript(
+	directive: TranscriptDirective,
+	alignment: AlignmentData,
+	deleteStart: number,
+	deleteEnd: number
+): DeleteResult | null {
+	const content = directive.content;
+
+	// Calculate new content
+	const newContent = (content.slice(0, deleteStart) + content.slice(deleteEnd)).trim();
+	if (!newContent) {
+		return null; // Would delete everything
+	}
+
+	// Determine deletion type based on trimmed positions
+	const trimmedStart = content.slice(0, deleteStart).trim();
+	const trimmedEnd = content.slice(deleteEnd).trim();
+
+	const isDeleteFromStart = !trimmedStart;
+	const isDeleteFromEnd = !trimmedEnd;
+
+	let newStartTime = directive.attributes.start;
+	let newEndTime = directive.attributes.end;
+	let newAlignment: AlignmentData;
+
+	if (isDeleteFromStart) {
+		// Delete from start: new start time is the first remaining word's start
+		const firstRemainingWord = findFirstWordAtOrAfter(content, alignment, deleteEnd);
+		if (firstRemainingWord) {
+			newStartTime = firstRemainingWord.word.start;
+		}
+		// Remove deleted words from alignment
+		newAlignment = removeWordsFromAlignment(alignment, 0, deleteEnd, content, newContent);
+	} else if (isDeleteFromEnd) {
+		// Delete from end: new end time is the last remaining word's end
+		const lastRemainingWord = findLastWordBefore(content, alignment, deleteStart);
+		if (lastRemainingWord) {
+			newEndTime = lastRemainingWord.word.end;
+		}
+		// Remove deleted words from alignment
+		newAlignment = removeWordsFromAlignment(alignment, deleteStart, content.length, content, newContent);
+	} else {
+		// Delete from middle: remove words from alignment
+		newAlignment = removeWordsFromAlignment(alignment, deleteStart, deleteEnd, content, newContent);
+	}
+
+	const newDirective: TranscriptDirective = {
+		...directive,
+		content: newContent,
+		attributes: {
+			start: newStartTime,
+			end: newEndTime,
+		},
+	};
+
+	return {
+		markdown: serializeDirective(newDirective),
+		alignment: newAlignment,
+	};
+}
+
+/**
+ * Find the first word at or after an offset.
+ */
+function findFirstWordAtOrAfter(
+	content: string,
+	alignment: AlignmentData,
+	offset: number
+): WordLocation | null {
+	for (const { location, textStart } of iterateWords(content, alignment)) {
+		if (textStart >= offset) {
+			return location;
+		}
+	}
+	return null;
+}
+
+/**
+ * Find the last word before an offset.
+ */
+function findLastWordBefore(
+	content: string,
+	alignment: AlignmentData,
+	offset: number
+): WordLocation | null {
+	let lastWord: WordLocation | null = null;
+	for (const { location, textStart } of iterateWords(content, alignment)) {
+		const textEnd = textStart + location.word.word.trim().length;
+		if (textEnd <= offset) {
+			lastWord = location;
+		} else {
+			break;
+		}
+	}
+	return lastWord;
+}
+
+/**
+ * Remove words that fall within a deletion range from alignment.
+ */
+function removeWordsFromAlignment(
+	alignment: AlignmentData,
+	deleteStart: number,
+	deleteEnd: number,
+	oldContent: string,
+	newContent: string
+): AlignmentData {
+	// Build a map of word positions in one pass
+	const wordPositions = new Map<AlignedWord, number>();
+	for (const { location, textStart } of iterateWords(oldContent, alignment)) {
+		wordPositions.set(location.word, textStart);
+	}
+
+	const newSegments: AlignedSegment[] = [];
+
+	for (const segment of alignment.segments) {
+		const newWords: AlignedWord[] = [];
+
+		for (const word of segment.words) {
+			const wordStart = wordPositions.get(word);
+			if (wordStart === undefined) {
+				// Couldn't find word, keep it
+				newWords.push(word);
+				continue;
+			}
+
+			const wordEnd = wordStart + word.word.trim().length;
+
+			// Keep words outside the deletion range
+			if (wordEnd <= deleteStart || wordStart >= deleteEnd) {
+				newWords.push(word);
+			}
+		}
+
+		const firstWord = newWords[0];
+		const lastWord = newWords[newWords.length - 1];
+		if (firstWord && lastWord) {
+			newSegments.push({
+				...segment,
+				start: firstWord.start,
+				end: lastWord.end,
+				text: newWords.map(w => w.word).join(""),
+				words: newWords,
+			});
+		}
+	}
+
+	return {
+		...alignment,
+		text: newContent,
+		segments: newSegments,
+	};
 }

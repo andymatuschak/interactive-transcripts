@@ -63,7 +63,7 @@
 
     // Import real extensions from our bundle
     import {
-      doubleEnterSplitExtension,
+      transcriptEditingExtension,
       transcriptField,
       alignmentStore
     } from "./bundle.js";
@@ -91,7 +91,7 @@ Some text after.
       doc: initialDoc,
       extensions: [
         transcriptField,
-        doubleEnterSplitExtension,
+        transcriptEditingExtension,
         keymap.of(defaultKeymap),
         EditorView.theme({
           "&": { backgroundColor: "#1e1e1e", color: "#d4d4d4" },
