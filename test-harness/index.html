@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CodeMirror Test Harness</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 20px;
+      background: #1e1e1e;
+      color: #fff;
+    }
+    #editor {
+      border: 1px solid #444;
+      height: 400px;
+    }
+    .cm-editor {
+      height: 100%;
+    }
+    #debug {
+      margin-top: 20px;
+      padding: 10px;
+      background: #2d2d2d;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    h1 { font-size: 18px; }
+    .controls {
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 8px 16px;
+      margin-right: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>CodeMirror Double-Enter Test</h1>
+  <div class="controls">
+    <button onclick="logState()">Log State</button>
+    <button onclick="clearDebug()">Clear Debug</button>
+  </div>
+  <div id="editor"></div>
+  <div id="debug"></div>
+
+  <script type="module">
+    import { EditorState } from "https://esm.sh/@codemirror/state@6";
+    import { EditorView, keymap } from "https://esm.sh/@codemirror/view@6";
+    import { defaultKeymap } from "https://esm.sh/@codemirror/commands@6";
+
+    const debugEl = document.getElementById('debug');
+
+    function debug(msg) {
+      const time = new Date().toISOString().split('T')[1].slice(0, 12);
+      debugEl.textContent += `[${time}] ${msg}\n`;
+      debugEl.scrollTop = debugEl.scrollHeight;
+    }
+
+    window.clearDebug = () => { debugEl.textContent = ''; };
+
+    // Simulate transcript field
+    function parseDirectives(doc) {
+      const text = doc.toString();
+      const directives = [];
+      const regex = /:::transcript\[([^\]]+)\](?:\{([^}]*)\})?\n([\s\S]*?)\n:::/g;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const [full, audioPath, attrs, content] = match;
+        directives.push({
+          audioPath,
+          attributes: parseAttrs(attrs || ''),
+          content,
+          from: match.index,
+          to: match.index + full.length,
+          contentFrom: match.index + full.indexOf(content),
+        });
+      }
+      return directives;
+    }
+
+    function parseAttrs(str) {
+      const attrs = {};
+      const startMatch = str.match(/start=([\d.]+)/);
+      const endMatch = str.match(/end=([\d.]+)/);
+      if (startMatch) attrs.start = parseFloat(startMatch[1]);
+      if (endMatch) attrs.end = parseFloat(endMatch[1]);
+      return attrs;
+    }
+
+    // Fake alignment store
+    const alignmentStore = new Map();
+    window.alignmentStore = alignmentStore;
+
+    // Double-enter tracking
+    let lastEnterTime = 0;
+    let lastEnterPos = -1;
+
+    function handleEnter(view) {
+      const now = Date.now();
+      const cursor = view.state.selection.main.head;
+      const timeDiff = now - lastEnterTime;
+      const posDiff = Math.abs(cursor - lastEnterPos);
+
+      debug(`Enter pressed at ${cursor}, lastPos=${lastEnterPos}, timeDiff=${timeDiff}ms, posDiff=${posDiff}`);
+
+      const isDoubleEnter = timeDiff < 500 && posDiff <= 1 && lastEnterPos >= 0;
+      debug(`isDoubleEnter: ${isDoubleEnter}`);
+
+      if (isDoubleEnter) {
+        const directives = parseDirectives(view.state.doc);
+        debug(`Found ${directives.length} directives`);
+
+        const directive = directives.find(d => cursor > d.contentFrom && cursor < d.to - 3);
+        debug(`Directive at cursor: ${directive ? 'yes' : 'no'}`);
+
+        if (directive) {
+          debug(`Directive: from=${directive.from}, to=${directive.to}, contentFrom=${directive.contentFrom}`);
+          debug(`Content: "${directive.content.slice(0, 50)}..."`);
+
+          // Reconstruct original content
+          const newlineOffset = lastEnterPos - directive.contentFrom;
+          debug(`newlineOffset: ${newlineOffset}`);
+
+          const originalContent =
+            directive.content.slice(0, newlineOffset) +
+            directive.content.slice(newlineOffset + 1);
+          debug(`Original content: "${originalContent.slice(0, 50)}..."`);
+
+          const alignment = alignmentStore.get(directive.audioPath + '\0' + originalContent);
+          debug(`Alignment found: ${alignment ? 'yes' : 'no'}`);
+
+          if (alignment) {
+            debug('Would perform split here!');
+            // Reset
+            lastEnterTime = 0;
+            lastEnterPos = -1;
+            return true;
+          }
+        }
+      }
+
+      lastEnterTime = now;
+      lastEnterPos = cursor;
+      debug(`Updated tracking: time=${now}, pos=${cursor}`);
+
+      return false; // Let default handle it
+    }
+
+    const doubleEnterKeymap = keymap.of([
+      { key: "Enter", run: handleEnter }
+    ]);
+
+    const initialDoc = `# Test Document
+
+:::transcript[test.m4a]{start=0 end=10}
+Hello world this is a test transcript with some words.
+:::
+
+Some text after.
+`;
+
+    const state = EditorState.create({
+      doc: initialDoc,
+      extensions: [
+        doubleEnterKeymap,
+        keymap.of(defaultKeymap),
+        EditorView.theme({
+          "&": { backgroundColor: "#1e1e1e", color: "#d4d4d4" },
+          ".cm-content": { caretColor: "#fff" },
+          ".cm-cursor": { borderLeftColor: "#fff" },
+        }),
+      ],
+    });
+
+    const view = new EditorView({
+      state,
+      parent: document.getElementById('editor'),
+    });
+
+    window.view = view;
+    window.logState = () => {
+      const directives = parseDirectives(view.state.doc);
+      debug(`Current directives: ${JSON.stringify(directives, null, 2)}`);
+    };
+
+    // Add a fake alignment
+    const fakeContent = "Hello world this is a test transcript with some words.";
+    alignmentStore.set('test.m4a\0' + fakeContent, {
+      segments: [{
+        words: [
+          { word: "Hello", start: 0, end: 0.5 },
+          { word: "world", start: 0.5, end: 1 },
+          { word: "this", start: 1, end: 1.5 },
+          { word: "is", start: 1.5, end: 2 },
+          { word: "a", start: 2, end: 2.2 },
+          { word: "test", start: 2.2, end: 2.8 },
+          { word: "transcript", start: 2.8, end: 3.5 },
+          { word: "with", start: 3.5, end: 4 },
+          { word: "some", start: 4, end: 4.5 },
+          { word: "words.", start: 4.5, end: 5 },
+        ]
+      }]
+    });
+
+    debug('Test harness loaded. Click in the transcript content and press Enter twice quickly.');
+    debug(`Alignment stored for content: "${fakeContent}"`);
+  </script>
+</body>
+</html>

@@ -10,6 +10,7 @@ import { floatingControlsPlugin } from "./playback/floatingControls";
 import { highlightSyncPlugin } from "./playback/highlightSync";
 import { initAlignmentLoader, alignmentLoaderPlugin } from "./alignment/alignmentLoader";
 import { AlignmentManager } from "./alignment/alignmentManager";
+import { doubleEnterSplitExtension } from "./editor/doubleEnterSplit";
 
 export default class TranscriptPlugin extends Plugin {
 	async onload(): Promise<void> {
@@ -29,6 +30,7 @@ export default class TranscriptPlugin extends Plugin {
 			alignmentLoaderPlugin,
 			floatingControlsPlugin,
 			highlightSyncPlugin,
+			doubleEnterSplitExtension,
 		]);
 
 		// Debug command to test parsing

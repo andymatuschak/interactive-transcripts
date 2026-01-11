@@ -1,12 +1,22 @@
 import type { AlignmentData, AlignedWord } from "../types";
 
 /**
+ * Normalize whitespace in content for cache key generation.
+ * Reduces all whitespace sequences (spaces, tabs, newlines) to single spaces.
+ * This ensures alignment lookups work regardless of formatting changes.
+ */
+function normalizeContent(content: string): string {
+	return content.replace(/\s+/g, " ").trim();
+}
+
+/**
  * Generate a cache key for alignment data.
- * Uses both audioPath and content to support multiple directives referencing
- * the same audio file with different transcript content (e.g., after splitting).
+ * Uses both audioPath and normalized content to support multiple directives
+ * referencing the same audio file with different transcript content.
+ * Content is normalized to ignore whitespace variations.
  */
 function makeKey(audioPath: string, content: string): string {
-	return `${audioPath}\0${content}`;
+	return `${audioPath}\0${normalizeContent(content)}`;
 }
 
 /**
