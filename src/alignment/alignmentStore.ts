@@ -1,12 +1,15 @@
 import type { AlignmentData, AlignedWord } from "../types";
 
 /**
- * Normalize whitespace in content for cache key generation.
- * Reduces all whitespace sequences (spaces, tabs, newlines) to single spaces.
- * This ensures alignment lookups work regardless of formatting changes.
+ * Normalize content for cache key generation.
+ * Strips skip markers and collapses whitespace so that lookups match
+ * regardless of whether the caller passes raw or clean content.
  */
 function normalizeContent(content: string): string {
-	return content.replace(/\s+/g, " ").trim();
+	return content
+		.replace(/:skip\{start=[\d.]+\s+end=[\d.]+\}/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 
 /**

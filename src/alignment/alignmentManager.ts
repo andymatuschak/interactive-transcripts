@@ -88,7 +88,13 @@ export class AlignmentManager {
 			return;
 		}
 
-		// Check cache first (immediate, no debounce needed)
+		// Check in-memory store first (handles in-place updates from editing)
+		if (alignmentStore.has(audioPath, directive.content)) {
+			this.setProgress(audioPath, { status: "complete" });
+			return;
+		}
+
+		// Check disk cache
 		const cached = await this.cache.get(audioFile, directive.content);
 		if (cached) {
 			alignmentStore.set(audioPath, directive.content, cached);
