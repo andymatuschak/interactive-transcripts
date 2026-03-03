@@ -27,7 +27,7 @@
 
 /* Show fence lines when cursor is in block */
 .transcript-fence-line.transcript-active {
-	background-color: var(--background-secondary);
+	/* background-color: var(--background-secondary); */
 	font-size: 0.75em;
 	line-height: 1.4;
 	height: auto;
@@ -44,8 +44,8 @@
 
 /* Content lines */
 .transcript-content-line {
-	background-color: var(--background-secondary);
-	font-family: var(--font-monospace);
+	/* background-color: var(--background-secondary); */
+	font-family: "Prestige Elite Std", var(--font-monospace);
 }
 
 /* Pulsing animation when alignment is generating */
