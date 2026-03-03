@@ -1,5 +1,6 @@
 import { App, Notice, TFile } from "obsidian";
-import type { TranscriptDirective } from "../types";
+import type { SkipMarker, TranscriptDirective } from "../types";
+import { parseContentWithSkips } from "../core/parser";
 
 export interface PlaybackState {
 	isPlaying: boolean;
@@ -18,6 +19,7 @@ export class AudioManager {
 
 	private audio: HTMLAudioElement | null = null;
 	private currentDirective: TranscriptDirective | null = null;
+	private skipRegions: SkipMarker[] = [];
 	private listeners: Set<PlaybackListener> = new Set();
 
 	private constructor(private app: App) {}
@@ -71,8 +73,18 @@ export class AudioManager {
 		this.audio = new Audio(audioUrl);
 		this.currentDirective = directive;
 
-		// Set start time
-		const effectiveStart = startTime ?? directive.attributes.start ?? 0;
+		// Parse skip regions from directive content
+		const { skips } = parseContentWithSkips(directive.content);
+		this.skipRegions = skips;
+
+		// Set start time, adjusting if it falls within a skip region
+		let effectiveStart = startTime ?? directive.attributes.start ?? 0;
+		for (const skip of this.skipRegions) {
+			if (effectiveStart >= skip.audioStart && effectiveStart < skip.audioEnd) {
+				effectiveStart = skip.audioEnd;
+				break;
+			}
+		}
 		this.audio.currentTime = effectiveStart;
 
 		// Set up event listeners
@@ -131,15 +143,25 @@ export class AudioManager {
 			this.audio = null;
 		}
 		this.currentDirective = null;
+		this.skipRegions = [];
 		this.notifyListeners();
 	}
 
 	/**
-	 * Seek to a specific time.
+	 * Seek to a specific time. If the time is within a skip region,
+	 * seeks to the end of that skip region instead.
 	 */
 	seekTo(time: number): void {
 		if (this.audio) {
-			this.audio.currentTime = time;
+			// Check if seeking into a skip region
+			let targetTime = time;
+			for (const skip of this.skipRegions) {
+				if (time >= skip.audioStart && time < skip.audioEnd) {
+					targetTime = skip.audioEnd;
+					break;
+				}
+			}
+			this.audio.currentTime = targetTime;
 			this.notifyListeners();
 		}
 	}
@@ -177,13 +199,22 @@ export class AudioManager {
 	}
 
 	private handleTimeUpdate = (): void => {
+		if (!this.audio) return;
+
+		const currentTime = this.audio.currentTime;
+
+		// Check if we've entered a skip region - if so, jump past it
+		for (const skip of this.skipRegions) {
+			if (currentTime >= skip.audioStart && currentTime < skip.audioEnd) {
+				this.audio.currentTime = skip.audioEnd;
+				// Don't notify yet - the next timeupdate will handle it
+				return;
+			}
+		}
+
 		// Check if we've reached the end time
 		const endTime = this.currentDirective?.attributes.end;
-		if (
-			endTime !== undefined &&
-			this.audio &&
-			this.audio.currentTime >= endTime
-		) {
+		if (endTime !== undefined && currentTime >= endTime) {
 			this.stop();
 			return;
 		}
