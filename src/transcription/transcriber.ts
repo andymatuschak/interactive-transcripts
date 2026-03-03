@@ -6,7 +6,7 @@ const GEMINI_URL =
 const TRANSCRIPTION_PROMPT = `Transcribe this audio, removing filler words
   but otherwise leaving the text verbatim. Add punctuation and paragraph breaks as appropriate. Apply
   this special rule for citing text passages: when you hear 'quote' or 'quote paragraph', followed by
-  a few words, followed by a pause, add a paragraph break at the pause.`;
+  a few words, followed by a pause, add a paragraph break at the pause. If there isn't a second 'quote' word, DO NOT transcribe as a phrase within quote punctuation marks. Instead, write the literal word 'quote' or 'quote paragraph' (followed optionally by a colon)followed by the words that follow, followed by a paragraph break.`;
 
 const MIME_TYPES: Record<string, string> = {
 	m4a: "audio/mp4",
