@@ -8,7 +8,7 @@
 		"dev": "bun run scripts/build-watch.ts",
 		"build": "tsc -noEmit -skipLibCheck && bun run scripts/build-prod.ts",
 		"test": "bun test",
-		"harness:build": "bun build test-harness/test-entry.ts --outfile=test-harness/bundle.js --format=esm --external=@codemirror/state --external=@codemirror/view",
+		"harness:build": "bun build test-harness/test-entry.ts --outfile=test-harness/bundle.js --format=esm",
 		"harness:serve": "python3 -m http.server 8765 -d test-harness",
 		"harness": "bun run harness:build && bun run harness:serve"
 	},
@@ -22,6 +22,7 @@
 		"typescript": "^5.8.3"
 	},
 	"dependencies": {
+		"@codemirror/commands": "^6.10.1",
 		"mdast-util-directive": "^3.1.0",
 		"mdast-util-from-markdown": "^2.0.2",
 		"mdast-util-to-markdown": "^2.1.2",

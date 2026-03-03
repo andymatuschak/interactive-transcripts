@@ -37,15 +37,6 @@
       cursor: pointer;
     }
   </style>
-  <script type="importmap">
-  {
-    "imports": {
-      "@codemirror/state": "https://esm.sh/@codemirror/state@6",
-      "@codemirror/view": "https://esm.sh/@codemirror/view@6",
-      "@codemirror/commands": "https://esm.sh/@codemirror/commands@6"
-    }
-  }
-  </script>
 </head>
 <body>
   <h1>Transcript Split Test Harness</h1>
@@ -54,19 +45,24 @@
     <button onclick="clearDebug()">Clear Debug</button>
   </div>
   <div id="editor"></div>
+  <h3 style="margin-top:12px">Paste target (Cmd+V here to verify clipboard):</h3>
+  <textarea id="paste-target" rows="4" style="width:100%;background:#2d2d2d;color:#d4d4d4;font-family:monospace;font-size:12px;padding:8px;border:1px solid #444;"></textarea>
   <div id="debug"></div>
 
   <script type="module">
-    import { EditorState } from "@codemirror/state";
-    import { EditorView, keymap } from "@codemirror/view";
-    import { defaultKeymap } from "@codemirror/commands";
-
-    // Import real extensions from our bundle
+    // Import everything from our bundle to use a single CodeMirror instance
     import {
+      EditorState,
+      EditorView,
+      keymap,
+      defaultKeymap,
+      insertNewlineAndIndent,
       transcriptEditingExtension,
+      copyHandlerExtension,
       transcriptField,
       alignmentStore
     } from "./bundle.js";
+    window.insertNewlineAndIndent = insertNewlineAndIndent;
 
     const debugEl = document.getElementById('debug');
 
@@ -92,6 +88,7 @@ Some text after.
       extensions: [
         transcriptField,
         transcriptEditingExtension,
+        copyHandlerExtension,
         keymap.of(defaultKeymap),
         EditorView.theme({
           "&": { backgroundColor: "#1e1e1e", color: "#d4d4d4" },
