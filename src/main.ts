@@ -1,5 +1,4 @@
 import { Notice, Plugin } from "obsidian";
-import { EditorView } from "@codemirror/view";
 import { transcriptField } from "./editor/state";
 import { wordHighlightField } from "./editor/highlightState";
 import { transcriptViewPlugin } from "./editor/viewPlugin";
@@ -53,18 +52,6 @@ export default class TranscriptPlugin extends Plugin {
 			highlightSyncPlugin,
 			transcriptEditingExtension,
 		]);
-
-		// Debug command to test parsing
-		this.addCommand({
-			id: "debug-parse-transcripts",
-			name: "Debug: Log parsed transcripts",
-			editorCallback: (editor, view) => {
-				// @ts-expect-error, not typed
-				const editorView = view.editor.cm as EditorView;
-				const fieldValue = editorView.state.field(transcriptField);
-				console.log("Parsed directives:", fieldValue.directives);
-			},
-		});
 
 		this.addCommand({
 			id: "transcribe-audio",
