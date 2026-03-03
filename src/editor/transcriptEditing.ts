@@ -259,8 +259,10 @@ function handleExternalReplacements(tr: Transaction): Transaction | null {
 	tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
 		const insertedText = inserted.toString();
 
-		// Only handle changes that insert non-whitespace
-		if (!/\S/.test(insertedText)) {
+		// Only handle actual replacements that insert non-whitespace.
+		// Pure insertions (fromA === toA) are not external plugin replacements —
+		// they're more likely paste operations routed without a user event.
+		if (fromA === toA || !/\S/.test(insertedText)) {
 			nonTranscriptChanges.push({ from: fromA, to: toA, insert: insertedText });
 			return;
 		}
