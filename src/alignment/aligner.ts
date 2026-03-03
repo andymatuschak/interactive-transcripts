@@ -80,6 +80,8 @@ export interface AlignerOptions {
 	start?: number;
 	/** End time in seconds for subrange alignment. */
 	end?: number;
+	/** Skip regions to exclude from alignment (audio times to skip over). */
+	skips?: Array<{ start: number; end: number }>;
 	/** Structured progress callback with parsed phase and percent. */
 	onProgress?: (info: AlignmentProgressInfo) => void;
 	/** Abort signal to cancel the alignment. */
@@ -95,6 +97,7 @@ interface AlignRequest {
 	language?: string;
 	start?: number;
 	end?: number;
+	skips?: Array<{ start: number; end: number }>;
 }
 
 interface AlignResponse {
@@ -380,6 +383,10 @@ export class Aligner {
 
 		if (options.end !== undefined) {
 			request.end = options.end;
+		}
+
+		if (options.skips && options.skips.length > 0) {
+			request.skips = options.skips;
 		}
 
 		// Send request and wait for response
