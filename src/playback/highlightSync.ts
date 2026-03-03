@@ -6,15 +6,18 @@ import type { TranscriptDirective } from "../types";
 
 /**
  * Find the document position for a word (or gap) at a given time.
+ * Uses rawContent (from the document) for position calculations because
+ * directive.content is AST-reconstructed and doesn't preserve original whitespace.
  */
 function findWordPosition(
 	directive: TranscriptDirective,
-	time: number
+	time: number,
+	rawContent: string
 ): { from: number; to: number } | null {
 	const words = alignmentStore.getWords(directive.audioPath, directive.content);
 	if (words.length === 0) return null;
 
-	const content = directive.content;
+	const content = rawContent;
 
 	// Helper to find word position in content
 	const getWordDocPosition = (wordIndex: number): { from: number; to: number; charEnd: number } | null => {
@@ -160,8 +163,9 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 				return;
 			}
 
-			// Find word position at current time
-			const pos = findWordPosition(directive, state.currentTime);
+			// Use raw document text for position calculations
+			const rawContent = this.view.state.doc.sliceString(directive.contentFrom, directive.to - 3);
+			const pos = findWordPosition(directive, state.currentTime, rawContent);
 
 			if (pos) {
 				// Only update if position changed

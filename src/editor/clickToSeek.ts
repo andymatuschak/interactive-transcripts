@@ -6,16 +6,18 @@ import type { TranscriptDirective, AlignedWord } from "../types";
 
 /**
  * Find the word at a given document position within a directive.
- * Returns the word and its index, or null if not found.
+ * Uses rawContent (from the document) for position calculations because
+ * directive.content is AST-reconstructed and doesn't preserve original whitespace.
  */
 function findWordAtPosition(
 	directive: TranscriptDirective,
-	docPos: number
+	docPos: number,
+	rawContent: string
 ): { word: AlignedWord; index: number } | null {
 	const words = alignmentStore.getWords(directive.audioPath, directive.content);
 	if (words.length === 0) return null;
 
-	const content = directive.content;
+	const content = rawContent;
 	const relativePos = docPos - directive.contentFrom;
 
 	if (relativePos < 0 || relativePos > content.length) return null;
@@ -73,8 +75,9 @@ function handleClick(event: MouseEvent, view: EditorView): boolean {
 		return false;
 	}
 
-	// Find the word at click position
-	const result = findWordAtPosition(directive, pos);
+	// Use raw document text for position calculations
+	const rawContent = view.state.doc.sliceString(directive.contentFrom, directive.to - 3);
+	const result = findWordAtPosition(directive, pos, rawContent);
 	if (!result) return false;
 
 	// Start playback from this word
