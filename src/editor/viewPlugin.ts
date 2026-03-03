@@ -7,8 +7,11 @@ import {
 } from "@codemirror/view";
 import { Range } from "@codemirror/state";
 import { transcriptField } from "./state";
-import { PlayButtonWidget } from "./widgets";
+import { PlayButtonWidget, SkipWidget } from "./widgets";
 import { AlignmentManager } from "../alignment/alignmentManager";
+
+/** Regex to match :skip{start=X end=Y} patterns in document text */
+const SKIP_REGEX = /:skip\{start=([\d.]+)\s+end=([\d.]+)\}/g;
 
 function buildDecorations(view: EditorView, aligningPaths: Set<string>): DecorationSet {
 	const decorations: Range<Decoration>[] = [];
@@ -52,6 +55,23 @@ function buildDecorations(view: EditorView, aligningPaths: Set<string>): Decorat
 						widget: new PlayButtonWidget(directive),
 						side: -1,
 					}).range(line.from)
+				);
+			}
+
+			// Find and replace :skip{...} markers with SkipWidget
+			const lineText = line.text;
+			SKIP_REGEX.lastIndex = 0;
+			let match;
+			while ((match = SKIP_REGEX.exec(lineText)) !== null) {
+				const audioStart = parseFloat(match[1]!);
+				const audioEnd = parseFloat(match[2]!);
+				const from = line.from + match.index;
+				const to = from + match[0].length;
+
+				decorations.push(
+					Decoration.replace({
+						widget: new SkipWidget(audioStart, audioEnd),
+					}).range(from, to)
 				);
 			}
 		}

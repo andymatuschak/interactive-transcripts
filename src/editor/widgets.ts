@@ -4,6 +4,35 @@ import { AudioManager } from "../playback/audioManager";
 import { AlignmentManager, AlignmentProgress } from "../alignment/alignmentManager";
 import type { TranscriptDirective } from "../types";
 
+/**
+ * Widget that renders a skip marker as a vertical ellipsis (⋮).
+ * Used to indicate skipped audio regions in transcripts.
+ */
+export class SkipWidget extends WidgetType {
+	constructor(
+		private audioStart: number,
+		private audioEnd: number
+	) {
+		super();
+	}
+
+	toDOM(): HTMLElement {
+		const span = document.createElement("span");
+		span.className = "transcript-skip-marker";
+		span.textContent = "\u22EE"; // ⋮ vertical ellipsis
+		span.setAttribute("title", `Skipped: ${this.audioStart.toFixed(1)}s - ${this.audioEnd.toFixed(1)}s`);
+		return span;
+	}
+
+	eq(other: SkipWidget): boolean {
+		return this.audioStart === other.audioStart && this.audioEnd === other.audioEnd;
+	}
+
+	ignoreEvent(): boolean {
+		return true; // Don't intercept events
+	}
+}
+
 function setSvgAttrs(el: SVGElement, attrs: Record<string, string>): void {
 	for (const [key, value] of Object.entries(attrs)) {
 		el.setAttribute(key, value);

@@ -231,3 +231,12 @@
 	border-radius: 2px;
 	padding: 1px 0;
 }
+
+/* Skip marker - indicates skipped audio region */
+.transcript-skip-marker {
+	color: var(--text-muted);
+	opacity: 0.5;
+	padding: 0 2px;
+	cursor: default;
+	user-select: none;
+}
