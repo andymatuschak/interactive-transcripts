@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseTranscriptDirectives } from "./parser";
+import { parseTranscriptDirectives, parseContentWithSkips } from "./parser";
 
 describe("parseTranscriptDirectives", () => {
 	test("parses a basic transcript directive", () => {
@@ -151,5 +151,97 @@ Content here.
 
 		expect(result).toHaveLength(1);
 		expect(result[0]?.audioPath).toBe("recordings/2024/interview.m4a");
+	});
+});
+
+describe("parseContentWithSkips", () => {
+	test("returns content unchanged when no skips", () => {
+		const result = parseContentWithSkips("Hello world this is a test.");
+
+		expect(result.text).toBe("Hello world this is a test.");
+		expect(result.skips).toHaveLength(0);
+		expect(result.rawContent).toBe("Hello world this is a test.");
+	});
+
+	test("parses single skip marker", () => {
+		const content = "Hello :skip{start=0.5 end=1.5} world.";
+		const result = parseContentWithSkips(content);
+
+		expect(result.text).toBe("Hello  world.");
+		expect(result.skips).toHaveLength(1);
+		expect(result.skips[0]?.position).toBe(6); // After "Hello "
+		expect(result.skips[0]?.audioStart).toBe(0.5);
+		expect(result.skips[0]?.audioEnd).toBe(1.5);
+		expect(result.rawContent).toBe(content);
+	});
+
+	test("parses multiple skip markers", () => {
+		const content = "Hello :skip{start=0.5 end=1.0} world :skip{start=2.0 end=3.0} test.";
+		const result = parseContentWithSkips(content);
+
+		expect(result.text).toBe("Hello  world  test.");
+		expect(result.skips).toHaveLength(2);
+
+		// First skip
+		expect(result.skips[0]?.position).toBe(6); // After "Hello "
+		expect(result.skips[0]?.audioStart).toBe(0.5);
+		expect(result.skips[0]?.audioEnd).toBe(1.0);
+
+		// Second skip - position in cleaned text
+		expect(result.skips[1]?.position).toBe(13); // "Hello  world " (after first skip removed)
+		expect(result.skips[1]?.audioStart).toBe(2.0);
+		expect(result.skips[1]?.audioEnd).toBe(3.0);
+	});
+
+	test("handles skip at start of content", () => {
+		const content = ":skip{start=0 end=2.5}Hello world.";
+		const result = parseContentWithSkips(content);
+
+		expect(result.text).toBe("Hello world.");
+		expect(result.skips).toHaveLength(1);
+		expect(result.skips[0]?.position).toBe(0);
+		expect(result.skips[0]?.audioStart).toBe(0);
+		expect(result.skips[0]?.audioEnd).toBe(2.5);
+	});
+
+	test("handles skip at end of content", () => {
+		const content = "Hello world.:skip{start=5.0 end=10.0}";
+		const result = parseContentWithSkips(content);
+
+		expect(result.text).toBe("Hello world.");
+		expect(result.skips).toHaveLength(1);
+		expect(result.skips[0]?.position).toBe(12); // After "Hello world."
+		expect(result.skips[0]?.audioStart).toBe(5.0);
+		expect(result.skips[0]?.audioEnd).toBe(10.0);
+	});
+
+	test("handles floating point timestamps with multiple decimal places", () => {
+		const content = "Test :skip{start=1.234 end=5.678} content.";
+		const result = parseContentWithSkips(content);
+
+		expect(result.skips[0]?.audioStart).toBe(1.234);
+		expect(result.skips[0]?.audioEnd).toBe(5.678);
+	});
+
+	test("handles integer timestamps", () => {
+		const content = "Test :skip{start=5 end=10} content.";
+		const result = parseContentWithSkips(content);
+
+		expect(result.skips[0]?.audioStart).toBe(5);
+		expect(result.skips[0]?.audioEnd).toBe(10);
+	});
+
+	test("position calculation is correct after multiple skips", () => {
+		// Verify that positions in cleaned text are accurate
+		const content = "A:skip{start=1 end=2}B:skip{start=3 end=4}C:skip{start=5 end=6}D";
+		const result = parseContentWithSkips(content);
+
+		expect(result.text).toBe("ABCD");
+		expect(result.skips).toHaveLength(3);
+
+		// Each skip's position should be where it appears in the cleaned text
+		expect(result.skips[0]?.position).toBe(1); // After "A"
+		expect(result.skips[1]?.position).toBe(2); // After "AB"
+		expect(result.skips[2]?.position).toBe(3); // After "ABC"
 	});
 });
