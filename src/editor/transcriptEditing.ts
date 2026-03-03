@@ -1,8 +1,39 @@
 import { EditorState, Transaction } from "@codemirror/state";
 import { transcriptField } from "./state";
 import { alignmentStore } from "../alignment/alignmentStore";
-import { splitTranscript, splitTranscriptAroundRange, deleteFromTranscript } from "../core/operations";
-import type { AlignmentData, TranscriptDirective } from "../types";
+import { splitTranscript, splitTranscriptAroundRange, splitTranscriptAtMultipleRanges, deleteFromTranscriptWithSkip } from "../core/operations";
+import type { ReplacementRange } from "../core/operations";
+import { parseContentWithSkips, type ParsedContentWithSkips } from "../core/parser";
+import type { AlignmentData, TranscriptDirective, SkipMarker } from "../types";
+
+/** Regex to match :skip{start=X end=Y} patterns for offset conversion */
+const SKIP_REGEX = /:skip\{start=[\d.]+\s+end=[\d.]+\}/g;
+
+/**
+ * Convert an offset from raw content (with skip markers) to clean text (without skip markers).
+ * Skip markers before the offset reduce the clean text position.
+ */
+function rawOffsetToCleanOffset(rawContent: string, rawOffset: number): number {
+	let cleanOffset = rawOffset;
+	let match;
+
+	SKIP_REGEX.lastIndex = 0;
+	while ((match = SKIP_REGEX.exec(rawContent)) !== null) {
+		const markerStart = match.index;
+		const markerEnd = markerStart + match[0].length;
+
+		if (markerEnd <= rawOffset) {
+			// Marker is entirely before the offset - subtract its length
+			cleanOffset -= match[0].length;
+		} else if (markerStart < rawOffset) {
+			// Offset is inside a marker - clamp to marker start
+			break;
+		}
+	}
+
+	return Math.max(0, cleanOffset);
+}
+
 
 /**
  * Context for editing within a transcript block.
@@ -10,8 +41,14 @@ import type { AlignmentData, TranscriptDirective } from "../types";
 interface TranscriptEditContext {
 	directive: TranscriptDirective;
 	alignment: AlignmentData;
+	/** Offset in clean text (raw doc content minus skip markers) */
 	startOffset: number;
+	/** Offset in clean text (raw doc content minus skip markers) */
 	endOffset: number;
+	/** Raw document content with skip markers removed (preserves paragraph breaks) */
+	cleanText: string;
+	/** Skip markers with positions in clean text space */
+	cleanSkips: SkipMarker[];
 }
 
 /**
@@ -30,16 +67,27 @@ function findEditContext(
 
 	if (!directive) return null;
 
-	const alignment = alignmentStore.get(directive.audioPath, directive.content);
+	// Use raw document text to preserve paragraph breaks (\n\n).
+	// directive.content is AST-reconstructed and collapses \n\n to \n.
+	const rawContent = tr.startState.doc.sliceString(directive.contentFrom, directive.to - 3);
+	const parsed = parseContentWithSkips(rawContent);
+
+	// The alignment store normalizes keys internally, so lookup works
+	// regardless of whitespace in the content we pass.
+	const alignment = alignmentStore.get(directive.audioPath, parsed.text);
 	if (!alignment) return null;
 
-	const startOffset = from - directive.contentFrom;
-	const endOffset = to - directive.contentFrom;
+	// Offsets relative to rawContent
+	const rawStartOffset = from - directive.contentFrom;
+	const rawEndOffset = to - directive.contentFrom;
 
-	// Validate offsets
-	if (startOffset < 0 || endOffset > directive.content.length) return null;
+	if (rawStartOffset < 0 || rawEndOffset > rawContent.length) return null;
 
-	return { directive, alignment, startOffset, endOffset };
+	// Convert to clean text space (skip markers removed, paragraph breaks preserved)
+	const startOffset = rawOffsetToCleanOffset(rawContent, rawStartOffset);
+	const endOffset = rawOffsetToCleanOffset(rawContent, rawEndOffset);
+
+	return { directive, alignment, startOffset, endOffset, cleanText: parsed.text, cleanSkips: parsed.skips };
 }
 
 /**
@@ -68,7 +116,8 @@ export function findDeletion(
 
 /**
  * Handle deletion inside a transcript block.
- * Adjusts timestamps and transforms alignment without regeneration.
+ * - Delete from start/end: adjusts timestamps
+ * - Delete from middle: creates a skip marker to preserve audio timeline
  */
 function handleDeletion(tr: Transaction): Transaction | null {
 	const deleteInfo = findDeletion(tr);
@@ -77,15 +126,32 @@ function handleDeletion(tr: Transaction): Transaction | null {
 	const ctx = findEditContext(tr, deleteInfo.from, deleteInfo.to);
 	if (!ctx) return null;
 
-	const { directive, alignment, startOffset, endOffset } = ctx;
+	const { directive, alignment, startOffset, endOffset, cleanText, cleanSkips } = ctx;
 
-	const result = deleteFromTranscript(directive, alignment, startOffset, endOffset);
+	// Create a directive with clean content (skip markers removed, paragraph breaks preserved)
+	const cleanDirective: TranscriptDirective = {
+		...directive,
+		content: cleanText,
+	};
+
+	const result = deleteFromTranscriptWithSkip(
+		cleanDirective,
+		alignment,
+		startOffset,
+		endOffset,
+		cleanSkips
+	);
 	if (!result) return null; // Would delete everything
 
-	alignmentStore.set(directive.audioPath, result.alignment.text, result.alignment);
+	// Store alignment using normalized text
+	const normalizedAlignmentText = result.alignment.text.replace(/\s+/g, " ").trim();
+	alignmentStore.set(directive.audioPath, normalizedAlignmentText, {
+		...result.alignment,
+		text: normalizedAlignmentText,
+	});
 
-	const cursorOffset = Math.min(startOffset, result.alignment.text.length);
-	const cursorPos = directive.from + result.markdown.indexOf("\n") + 1 + cursorOffset;
+	// Use the cursor offset from the operation (accounts for word boundary snapping)
+	const cursorPos = directive.from + result.markdown.indexOf("\n") + 1 + result.cursorOffset;
 
 	return tr.startState.update({
 		changes: {
@@ -134,11 +200,16 @@ function handleTextReplacement(tr: Transaction): Transaction | null {
 	const ctx = findEditContext(tr, replaceInfo.from, replaceInfo.to);
 	if (!ctx) return null;
 
-	const { directive, alignment, startOffset, endOffset } = ctx;
+	const { directive, alignment, startOffset, endOffset, cleanText } = ctx;
 	const { inserted } = replaceInfo;
 
+	const cleanDirective: TranscriptDirective = {
+		...directive,
+		content: cleanText,
+	};
+
 	const { beforeMarkdown, afterMarkdown, beforeAlignment, afterAlignment } =
-		splitTranscriptAroundRange(directive, alignment, startOffset, endOffset);
+		splitTranscriptAroundRange(cleanDirective, alignment, startOffset, endOffset);
 
 	if (beforeAlignment) {
 		alignmentStore.set(directive.audioPath, beforeAlignment.text, beforeAlignment);
@@ -169,10 +240,127 @@ function handleTextReplacement(tr: Transaction): Transaction | null {
 }
 
 /**
+ * Handle programmatic (non-user-event) replacements inside transcript blocks.
+ * Detects when an external plugin (e.g., Quote Leap) replaces text inside
+ * transcript blocks and splits the transcript around each replacement.
+ * Supports multiple replacements in a single transaction.
+ */
+function handleExternalReplacements(tr: Transaction): Transaction | null {
+	const { directives } = tr.startState.field(transcriptField);
+
+	// Classify changes: inside transcript vs not
+	const directiveChanges = new Map<TranscriptDirective, Array<{
+		fromA: number; toA: number; inserted: string;
+	}>>();
+	const nonTranscriptChanges: Array<{
+		from: number; to: number; insert: string;
+	}> = [];
+
+	tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+		const insertedText = inserted.toString();
+
+		// Only handle changes that insert non-whitespace
+		if (!/\S/.test(insertedText)) {
+			nonTranscriptChanges.push({ from: fromA, to: toA, insert: insertedText });
+			return;
+		}
+
+		// Find which directive this change falls in
+		const directive = directives.find(
+			(d: TranscriptDirective) => fromA >= d.contentFrom && toA <= d.to - 3
+		);
+
+		if (!directive) {
+			nonTranscriptChanges.push({ from: fromA, to: toA, insert: insertedText });
+			return;
+		}
+
+		if (!directiveChanges.has(directive)) {
+			directiveChanges.set(directive, []);
+		}
+		directiveChanges.get(directive)!.push({ fromA, toA, inserted: insertedText });
+	});
+
+	// No transcript changes → nothing to do
+	if (directiveChanges.size === 0) return null;
+
+	// Process each affected directive
+	const replacementChanges: Array<{ from: number; to: number; insert: string }> = [];
+
+	for (const [directive, changes] of directiveChanges) {
+		// Get raw content and parse skip markers
+		const rawContent = tr.startState.doc.sliceString(directive.contentFrom, directive.to - 3);
+		const parsed = parseContentWithSkips(rawContent);
+
+		const alignment = alignmentStore.get(directive.audioPath, parsed.text);
+		if (!alignment) {
+			// No alignment → pass through original changes
+			for (const change of changes) {
+				nonTranscriptChanges.push({ from: change.fromA, to: change.toA, insert: change.inserted });
+			}
+			continue;
+		}
+
+		// Convert doc positions to clean-text offsets, sorted by position
+		const ranges: ReplacementRange[] = changes
+			.sort((a, b) => a.fromA - b.fromA)
+			.map(change => {
+				const rawStart = change.fromA - directive.contentFrom;
+				const rawEnd = change.toA - directive.contentFrom;
+				return {
+					startOffset: rawOffsetToCleanOffset(rawContent, rawStart),
+					endOffset: rawOffsetToCleanOffset(rawContent, rawEnd),
+					insertedText: change.inserted,
+				};
+			});
+
+		const cleanDirective: TranscriptDirective = {
+			...directive,
+			content: parsed.text,
+		};
+
+		const result = splitTranscriptAtMultipleRanges(cleanDirective, alignment, ranges);
+
+		// Store alignments for each resulting block
+		for (const { text, alignment: sliceAlignment } of result.alignments) {
+			const normalizedText = text.replace(/\s+/g, " ").trim();
+			alignmentStore.set(directive.audioPath, normalizedText, {
+				...sliceAlignment,
+				text: normalizedText,
+			});
+		}
+
+		replacementChanges.push({
+			from: directive.from,
+			to: directive.to,
+			insert: result.replacement,
+		});
+	}
+
+	// No directives were actually split → pass through original transaction
+	if (replacementChanges.length === 0) return null;
+
+	// Filter out non-transcript changes that overlap with directive replacements
+	const filteredNonTranscript = nonTranscriptChanges.filter(change =>
+		!replacementChanges.some(r => change.from >= r.from && change.to <= r.from + (r.to - r.from))
+	);
+
+	// Build all changes sorted by position
+	const allChanges = [...replacementChanges, ...filteredNonTranscript]
+		.sort((a, b) => a.from - b.from);
+
+	return tr.startState.update({
+		changes: allChanges,
+		annotations: Transaction.userEvent.of("input"),
+	});
+}
+
+/**
  * Transaction filter that intercepts edits in transcript blocks.
  * - Newline at start of line: splits transcript at that position
  * - Text replacement (typing or paste): splits around the replaced range
  * - Deletion: adjusts timestamps and transforms alignment
+ * - External plugin replacement: splits around inserted content
  */
 function transcriptSplitFilter(tr: Transaction): Transaction | readonly Transaction[] {
 	if (!tr.docChanged) {
@@ -191,14 +379,20 @@ function transcriptSplitFilter(tr: Transaction): Transaction | readonly Transact
 		if (deletionResult) return deletionResult;
 	}
 
-	// Double-enter split only for keyboard input (not paste)
-	if (!tr.isUserEvent("input.type")) {
+	// Handle external plugin replacements (non-user-event, e.g. Quote Leap)
+	if (tr.annotation(Transaction.userEvent) === undefined) {
+		const externalResult = handleExternalReplacements(tr);
+		if (externalResult) return externalResult;
+	}
+
+	// Double-enter split for keyboard input
+	if (!tr.isUserEvent("input")) {
 		return tr;
 	}
 
 	// Check if this transaction inserts a newline
 	let newlineInsertPos: number | null = null;
-	tr.changes.iterChanges((fromA, _toA, _fromB, _toB, inserted) => {
+	tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
 		const text = inserted.toString();
 		if (text === "\n" || text === "\r\n") {
 			newlineInsertPos = fromA;
@@ -228,35 +422,43 @@ function transcriptSplitFilter(tr: Transaction): Transaction | readonly Transact
 		return tr;
 	}
 
-	// The directive.content includes the newline from the first Enter.
-	// Calculate the expected newline position in the content.
+	// directive.content is reconstructed from the markdown AST (paragraphs joined
+	// by single \n, trimmed), so its offsets don't match document positions.
+	// Use the raw document text for finding the newline.
+	const rawContent = doc.sliceString(directive.contentFrom, directive.to - 3);
 	const expectedOffset = (newlineInsertPos - 1) - directive.contentFrom;
 
-	// Find the actual newline - may be off by 1 due to editor whitespace handling
+	// Find the actual newline in raw document content
 	const searchOffsets = [expectedOffset, expectedOffset - 1, expectedOffset + 1];
 	const splitOffset = searchOffsets.find(
-		offset => offset >= 0 && offset < directive.content.length && directive.content[offset] === "\n"
+		offset => offset >= 0 && offset < rawContent.length && rawContent[offset] === "\n"
 	);
 
-	if (splitOffset === undefined || splitOffset <= 0 || splitOffset >= directive.content.length - 1) {
+	if (splitOffset === undefined || splitOffset <= 0 || splitOffset >= rawContent.length - 1) {
 		return tr;
 	}
 
-	const alignment = alignmentStore.get(directive.audioPath, directive.content);
+	// Look up alignment (store normalizes keys internally)
+	const alignment = alignmentStore.get(directive.audioPath, rawContent);
 	if (!alignment) {
 		return tr;
 	}
 
-	// Create a directive without the newline for splitting
+	// Strip skip markers but preserve paragraph breaks for splitting.
+	// Using rawParsed.text (not normalizedText) ensures paragraph structure
+	// is preserved in the serialized output.
+	const rawParsed = parseContentWithSkips(rawContent);
+	const rawCleanOffset = rawOffsetToCleanOffset(rawContent, splitOffset);
+
 	const directiveForSplit = {
 		...directive,
-		content: directive.content.slice(0, splitOffset) + directive.content.slice(splitOffset + 1),
+		content: rawParsed.text,
 	};
 
 	const { beforeMarkdown, afterMarkdown, beforeAlignment, afterAlignment } = splitTranscript(
 		directiveForSplit,
 		alignment,
-		splitOffset
+		rawCleanOffset
 	);
 
 	if (beforeAlignment.text) {
