@@ -38,7 +38,7 @@ export class AlignmentManager {
 	private currentTask: AlignmentTask | null = null;
 	private isProcessing = false;
 
-	// Debounce timers per audio path
+	// Debounce timers per directive (audioPath + content)
 	private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
 	private readonly DEBOUNCE_MS = 2000;
 
@@ -111,25 +111,29 @@ export class AlignmentManager {
 			return;
 		}
 
-		// Clear any existing debounce timer
-		const existingTimer = this.debounceTimers.get(audioPath);
+		// Use a directive-specific key so multiple blocks for the same audio
+		// each get their own debounce slot
+		const directiveKey = this.makeDirectiveKey(directive);
+
+		// Clear any existing debounce timer for this directive
+		const existingTimer = this.debounceTimers.get(directiveKey);
 		if (existingTimer) {
 			clearTimeout(existingTimer);
 		}
 
-		// Abort any in-progress or queued task for this audio path
-		this.abortTaskForPath(audioPath);
+		// Abort any queued task for this specific directive content
+		this.abortTaskForDirective(directive);
 
 		// Set status to pending (debouncing)
 		this.setProgress(audioPath, { status: "pending" });
 
 		// Debounce the alignment request
 		const timer = setTimeout(() => {
-			this.debounceTimers.delete(audioPath);
+			this.debounceTimers.delete(directiveKey);
 			this.enqueueTask(directive, audioFile);
 		}, this.DEBOUNCE_MS);
 
-		this.debounceTimers.set(audioPath, timer);
+		this.debounceTimers.set(directiveKey, timer);
 	}
 
 	/**
@@ -158,11 +162,13 @@ export class AlignmentManager {
 	 * Abort any pending/in-progress alignment for a path (e.g., on edit).
 	 */
 	abortTaskForPath(audioPath: string): void {
-		// Cancel debounce timer
-		const timer = this.debounceTimers.get(audioPath);
-		if (timer) {
-			clearTimeout(timer);
-			this.debounceTimers.delete(audioPath);
+		// Cancel all debounce timers for this audio path
+		const prefix = audioPath + "\0";
+		for (const [key, timer] of this.debounceTimers) {
+			if (key.startsWith(prefix)) {
+				clearTimeout(timer);
+				this.debounceTimers.delete(key);
+			}
 		}
 
 		// Abort current task if it matches
@@ -174,6 +180,31 @@ export class AlignmentManager {
 		// Remove from queue
 		this.queue = this.queue.filter((task) => {
 			if (task.directive.audioPath === audioPath) {
+				task.abortController.abort();
+				return false;
+			}
+			return true;
+		});
+	}
+
+	private makeDirectiveKey(directive: TranscriptDirective): string {
+		return `${directive.audioPath}\0${directive.content.replace(/\s+/g, " ").trim()}`;
+	}
+
+	/**
+	 * Abort any queued task for a specific directive (same audio + content).
+	 */
+	private abortTaskForDirective(directive: TranscriptDirective): void {
+		const key = this.makeDirectiveKey(directive);
+
+		// Abort current task if it matches this directive
+		if (this.currentTask && this.makeDirectiveKey(this.currentTask.directive) === key) {
+			this.currentTask.abortController.abort();
+		}
+
+		// Remove matching tasks from queue
+		this.queue = this.queue.filter((task) => {
+			if (this.makeDirectiveKey(task.directive) === key) {
 				task.abortController.abort();
 				return false;
 			}

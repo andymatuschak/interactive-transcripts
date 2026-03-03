@@ -133,6 +133,20 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 					this.clearHighlight();
 				}
 			});
+
+			// Enable chaining playback across split transcript blocks
+			audioManager.setNextDirectiveFinder((current) => {
+				const fieldValue = this.view.state.field(transcriptField, false);
+				if (!fieldValue) return null;
+				const sameAudio = fieldValue.directives.filter(
+					(d) => d.audioPath === current.audioPath
+				);
+				const idx = sameAudio.findIndex(
+					(d) => d.content === current.content
+				);
+				if (idx === -1 || idx >= sameAudio.length - 1) return null;
+				return sameAudio[idx + 1];
+			});
 		}
 
 		updateHighlight() {
@@ -268,6 +282,11 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 			this.unsubscribe?.();
 			if (this.animationFrameId !== null) {
 				cancelAnimationFrame(this.animationFrameId);
+			}
+			try {
+				AudioManager.getInstance().setNextDirectiveFinder(null);
+			} catch {
+				// AudioManager may already be destroyed
 			}
 		}
 	},

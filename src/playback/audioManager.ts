@@ -21,6 +21,9 @@ export class AudioManager {
 	private currentDirective: TranscriptDirective | null = null;
 	private skipRegions: SkipMarker[] = [];
 	private listeners: Set<PlaybackListener> = new Set();
+	private nextDirectiveFinder:
+		| ((current: TranscriptDirective) => TranscriptDirective | null)
+		| null = null;
 
 	private constructor(private app: App) {}
 
@@ -48,6 +51,7 @@ export class AudioManager {
 	static destroy(): void {
 		if (AudioManager.instance) {
 			AudioManager.instance.stop();
+			AudioManager.instance.nextDirectiveFinder = null;
 			AudioManager.instance = null;
 		}
 	}
@@ -198,6 +202,38 @@ export class AudioManager {
 		return () => this.listeners.delete(listener);
 	}
 
+	/**
+	 * Set a callback that finds the next directive to chain playback to.
+	 */
+	setNextDirectiveFinder(
+		finder: ((current: TranscriptDirective) => TranscriptDirective | null) | null
+	): void {
+		this.nextDirectiveFinder = finder;
+	}
+
+	/**
+	 * Advance playback to the next directive without restarting the audio element.
+	 */
+	private advanceToDirective(next: TranscriptDirective): void {
+		this.currentDirective = next;
+
+		const { skips } = parseContentWithSkips(next.content);
+		this.skipRegions = skips;
+
+		let effectiveStart = next.attributes.start ?? 0;
+		for (const skip of this.skipRegions) {
+			if (effectiveStart >= skip.audioStart && effectiveStart < skip.audioEnd) {
+				effectiveStart = skip.audioEnd;
+				break;
+			}
+		}
+
+		if (this.audio) {
+			this.audio.currentTime = effectiveStart;
+		}
+		this.notifyListeners();
+	}
+
 	private handleTimeUpdate = (): void => {
 		if (!this.audio) return;
 
@@ -215,6 +251,13 @@ export class AudioManager {
 		// Check if we've reached the end time
 		const endTime = this.currentDirective?.attributes.end;
 		if (endTime !== undefined && currentTime >= endTime) {
+			if (this.nextDirectiveFinder && this.currentDirective) {
+				const next = this.nextDirectiveFinder(this.currentDirective);
+				if (next) {
+					this.advanceToDirective(next);
+					return;
+				}
+			}
 			this.stop();
 			return;
 		}
