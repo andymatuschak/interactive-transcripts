@@ -60,6 +60,20 @@ class AlignmentStore {
 	}
 
 	/**
+	 * Find all alignments for a given audio path.
+	 */
+	findByAudioPath(audioPath: string): AlignmentData[] {
+		const prefix = audioPath + "\0";
+		const results: AlignmentData[] = [];
+		for (const [key, data] of this.alignments) {
+			if (key.startsWith(prefix)) {
+				results.push(data);
+			}
+		}
+		return results;
+	}
+
+	/**
 	 * Clear all stored alignments.
 	 */
 	clear(): void {

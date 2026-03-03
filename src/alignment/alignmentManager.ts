@@ -2,7 +2,7 @@ import { App, TFile } from "obsidian";
 import { alignmentStore } from "./alignmentStore";
 import { Aligner } from "./aligner";
 import { AlignmentCache } from "./alignmentCache";
-import type { TranscriptDirective, AlignmentData } from "../types";
+import type { TranscriptDirective, AlignmentData, AlignedSegment, AlignedWord } from "../types";
 
 export type AlignmentStatus = "idle" | "pending" | "generating" | "complete" | "error";
 
@@ -102,6 +102,15 @@ export class AlignmentManager {
 			return;
 		}
 
+		// Try to derive from an existing alignment (e.g. pasted excerpt)
+		const derived = this.tryDeriveAlignment(directive);
+		if (derived) {
+			alignmentStore.set(audioPath, directive.content, derived);
+			await this.cache.set(audioFile, directive.content, derived);
+			this.setProgress(audioPath, { status: "complete" });
+			return;
+		}
+
 		// Clear any existing debounce timer
 		const existingTimer = this.debounceTimers.get(audioPath);
 		if (existingTimer) {
@@ -177,6 +186,71 @@ export class AlignmentManager {
 		this.statusListeners.forEach((listener) => listener(audioPath, progress));
 	}
 
+	/**
+	 * Try to derive alignment from an existing alignment for the same audio path.
+	 * This handles pasted excerpts that have start/end attributes — we can filter
+	 * the source alignment's words by time range instead of re-running the aligner.
+	 */
+	private tryDeriveAlignment(directive: TranscriptDirective): AlignmentData | null {
+		const { start, end } = directive.attributes;
+		if (start === undefined || end === undefined) return null;
+
+		const sources = alignmentStore.findByAudioPath(directive.audioPath);
+		if (sources.length === 0) return null;
+
+		const EPS = 0.01;
+
+		for (const source of sources) {
+			const filteredWords: AlignedWord[] = [];
+			for (const segment of source.segments) {
+				for (const word of segment.words) {
+					if (word.start >= start - EPS && word.end <= end + EPS) {
+						filteredWords.push(word);
+					}
+				}
+			}
+
+			if (filteredWords.length === 0) continue;
+
+			// Group words into segments (split on gaps > 1s)
+			const segments: AlignedSegment[] = [];
+			let currentWords: AlignedWord[] = [filteredWords[0]!];
+
+			for (let i = 1; i < filteredWords.length; i++) {
+				const gap = filteredWords[i]!.start - filteredWords[i - 1]!.end;
+				if (gap > 1.0) {
+					segments.push({
+						start: currentWords[0]!.start,
+						end: currentWords[currentWords.length - 1]!.end,
+						text: currentWords.map((w) => w.word).join(""),
+						words: currentWords,
+					});
+					currentWords = [filteredWords[i]!];
+				} else {
+					currentWords.push(filteredWords[i]!);
+				}
+			}
+			segments.push({
+				start: currentWords[0]!.start,
+				end: currentWords[currentWords.length - 1]!.end,
+				text: currentWords.map((w) => w.word).join(""),
+				words: currentWords,
+			});
+
+			return {
+				audioHash: source.audioHash,
+				transcriptHash: "",
+				language: source.language,
+				tool: "derived",
+				createdAt: Date.now(),
+				segments,
+				text: directive.content,
+			};
+		}
+
+		return null;
+	}
+
 	private enqueueTask(directive: TranscriptDirective, audioFile: TFile): void {
 		const task: AlignmentTask = {
 			directive,
@@ -245,7 +319,7 @@ export class AlignmentManager {
 
 		const data = await this.aligner.align(audioFile, directive.content, {
 			tool: "stable-ts",
-			model: "base",
+			model: "turbo",
 			start: directive.attributes.start,
 			end: directive.attributes.end,
 			signal: abortController.signal,
