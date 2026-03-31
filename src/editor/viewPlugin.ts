@@ -106,7 +106,9 @@ export const transcriptViewPlugin = ViewPlugin.fromClass(
 
 		private rebuildDecorations() {
 			this.decorations = buildDecorations(this.view, this.aligningPaths);
-			this.view.dispatch({});
+			// Defer dispatch to avoid re-entrancy when called from a
+			// status listener during a CM update cycle
+			queueMicrotask(() => this.view.dispatch({}));
 		}
 
 		private subscribeToAlignmentStatus() {

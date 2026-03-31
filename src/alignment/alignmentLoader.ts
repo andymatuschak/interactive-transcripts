@@ -39,8 +39,11 @@ function loadAlignments(view: EditorView): void {
 	const fieldValue = view.state.field(transcriptField, false);
 	if (!fieldValue) return;
 
+	// Cancel debounce timers for content that no longer exists in the
+	// document (e.g. edits that were undone or backspaced away)
+	manager.cancelStaleTimers(fieldValue.directives);
+
 	for (const directive of fieldValue.directives) {
-		// Request alignment (will use cache if available, debounce if needed)
 		manager.requestAlignment(directive);
 	}
 }

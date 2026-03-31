@@ -38,9 +38,13 @@ export class AlignmentManager {
 	private currentTask: AlignmentTask | null = null;
 	private isProcessing = false;
 
-	// Debounce timers per directive (audioPath + content)
+	// Debounce timers per directive (audioPath + normalized content)
 	private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
 	private readonly DEBOUNCE_MS = 2000;
+
+	// Generation counter per directive (audioPath + normalized content)
+	// to detect stale async requests after content reverts
+	private requestGeneration: Map<string, number> = new Map();
 
 	private constructor(private app: App) {
 		this.aligner = new Aligner(app);
@@ -80,6 +84,12 @@ export class AlignmentManager {
 	 */
 	async requestAlignment(directive: TranscriptDirective): Promise<void> {
 		const audioPath = directive.audioPath;
+		const directiveKey = this.makeDirectiveKey(directive);
+
+		// Increment generation so any in-flight async request for this
+		// directive knows it's been superseded (e.g. content reverted)
+		const gen = (this.requestGeneration.get(directiveKey) ?? 0) + 1;
+		this.requestGeneration.set(directiveKey, gen);
 
 		// Find the audio file
 		const audioFile = this.app.vault.getAbstractFileByPath(audioPath);
@@ -94,8 +104,9 @@ export class AlignmentManager {
 			return;
 		}
 
-		// Check disk cache
+		// Check disk cache (async — a newer request may supersede us)
 		const cached = await this.cache.get(audioFile, directive.content);
+		if (this.requestGeneration.get(directiveKey) !== gen) return;
 		if (cached) {
 			alignmentStore.set(audioPath, directive.content, cached);
 			this.setProgress(audioPath, { status: "complete" });
@@ -111,15 +122,8 @@ export class AlignmentManager {
 			return;
 		}
 
-		// Use a directive-specific key so multiple blocks for the same audio
-		// each get their own debounce slot
-		const directiveKey = this.makeDirectiveKey(directive);
-
 		// Clear any existing debounce timer for this directive
-		const existingTimer = this.debounceTimers.get(directiveKey);
-		if (existingTimer) {
-			clearTimeout(existingTimer);
-		}
+		this.clearDebounceTimer(directiveKey);
 
 		// Abort any queued task for this specific directive content
 		this.abortTaskForDirective(directive);
@@ -185,6 +189,29 @@ export class AlignmentManager {
 			}
 			return true;
 		});
+	}
+
+	/**
+	 * Cancel debounce timers whose content no longer matches any current directive.
+	 * Called by the loader before requesting alignments so that timers for
+	 * reverted or undone edits don't trigger unnecessary alignment generation.
+	 */
+	cancelStaleTimers(currentDirectives: readonly TranscriptDirective[]): void {
+		const currentKeys = new Set(currentDirectives.map(d => this.makeDirectiveKey(d)));
+		for (const [key, timer] of this.debounceTimers) {
+			if (!currentKeys.has(key)) {
+				clearTimeout(timer);
+				this.debounceTimers.delete(key);
+			}
+		}
+	}
+
+	private clearDebounceTimer(debounceKey: string): void {
+		const timer = this.debounceTimers.get(debounceKey);
+		if (timer) {
+			clearTimeout(timer);
+			this.debounceTimers.delete(debounceKey);
+		}
 	}
 
 	private makeDirectiveKey(directive: TranscriptDirective): string {
