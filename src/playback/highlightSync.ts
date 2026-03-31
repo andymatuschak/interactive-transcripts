@@ -150,6 +150,11 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 		}
 
 		updateHighlight() {
+			if (!this.view.dom.parentElement?.classList.contains("is-live-preview")) {
+				this.clearHighlight();
+				return;
+			}
+
 			const audioManager = AudioManager.getInstance();
 			const state = audioManager.getState();
 

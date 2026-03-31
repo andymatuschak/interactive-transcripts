@@ -81,7 +81,7 @@ export const floatingControlsPlugin = ViewPlugin.define((view) => {
 
 	// Update UI based on playback state
 	const updateUI = (state: PlaybackState) => {
-		if (state.directive) {
+		if (state.directive && view.dom.parentElement?.classList.contains("is-live-preview")) {
 			container.classList.add("is-visible");
 		} else {
 			container.classList.remove("is-visible");

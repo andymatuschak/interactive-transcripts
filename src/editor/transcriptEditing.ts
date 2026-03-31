@@ -1,5 +1,6 @@
 import { EditorState, Transaction } from "@codemirror/state";
 import { transcriptField } from "./state";
+import { livePreviewField } from "./editorMode";
 import { alignmentStore } from "../alignment/alignmentStore";
 import { splitTranscript, splitTranscriptAroundRange, splitTranscriptAtMultipleRanges, deleteFromTranscriptWithSkip } from "../core/operations";
 import type { ReplacementRange } from "../core/operations";
@@ -365,7 +366,7 @@ function handleExternalReplacements(tr: Transaction): Transaction | null {
  * - External plugin replacement: splits around inserted content
  */
 function transcriptSplitFilter(tr: Transaction): Transaction | readonly Transaction[] {
-	if (!tr.docChanged) {
+	if (!tr.docChanged || tr.startState.field(livePreviewField, false) === false) {
 		return tr;
 	}
 

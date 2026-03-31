@@ -7,6 +7,7 @@ import {
 } from "@codemirror/view";
 import { Range } from "@codemirror/state";
 import { transcriptField } from "./state";
+import { livePreviewField } from "./editorMode";
 import { PlayButtonWidget, SkipWidget } from "./widgets";
 import { AlignmentManager } from "../alignment/alignmentManager";
 
@@ -14,6 +15,8 @@ import { AlignmentManager } from "../alignment/alignmentManager";
 const SKIP_REGEX = /:skip\{start=([\d.]+)\s+end=([\d.]+)\}/g;
 
 function buildDecorations(view: EditorView, aligningPaths: Set<string>): DecorationSet {
+	if (view.state.field(livePreviewField, false) === false) return Decoration.none;
+
 	const decorations: Range<Decoration>[] = [];
 	const { directives } = view.state.field(transcriptField);
 	const cursorPos = view.state.selection.main.head;
@@ -125,7 +128,13 @@ export const transcriptViewPlugin = ViewPlugin.fromClass(
 		}
 
 		update(update: ViewUpdate) {
-			if (update.docChanged || update.viewportChanged || update.selectionSet) {
+			if (
+				update.docChanged ||
+				update.viewportChanged ||
+				update.selectionSet ||
+				update.startState.field(livePreviewField, false) !==
+					update.state.field(livePreviewField, false)
+			) {
 				this.decorations = buildDecorations(update.view, this.aligningPaths);
 			}
 		}

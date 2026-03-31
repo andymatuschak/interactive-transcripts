@@ -50,6 +50,8 @@ function findWordAtPosition(
  * Handle Cmd-click (Mac) or Ctrl-click (Windows/Linux) to play from clicked word.
  */
 function handleClick(event: MouseEvent, view: EditorView): boolean {
+	if (!view.dom.parentElement?.classList.contains("is-live-preview")) return false;
+
 	// Check for Cmd (Mac) or Ctrl (Windows/Linux)
 	const isMac = navigator.platform.toLowerCase().includes("mac");
 	const modifierPressed = isMac ? event.metaKey : event.ctrlKey;

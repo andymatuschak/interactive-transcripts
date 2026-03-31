@@ -1,6 +1,7 @@
 import { Notice, Plugin } from "obsidian";
 import { transcriptField } from "./editor/state";
 import { wordHighlightField } from "./editor/highlightState";
+import { livePreviewField, livePreviewDetector } from "./editor/editorMode";
 import { transcriptViewPlugin } from "./editor/viewPlugin";
 import { clickToSeekExtension } from "./editor/clickToSeek";
 import { copyHandlerExtension } from "./editor/copyHandler";
@@ -44,6 +45,8 @@ export default class TranscriptPlugin extends Plugin {
 		this.registerEditorExtension([
 			transcriptField,
 			wordHighlightField,
+			livePreviewField,
+			livePreviewDetector,
 			transcriptViewPlugin,
 			clickToSeekExtension,
 			copyHandlerExtension,
