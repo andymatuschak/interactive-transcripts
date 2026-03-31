@@ -110,6 +110,7 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 	class {
 		decorations: DecorationSet = Decoration.none;
 		private unsubscribe: (() => void) | null = null;
+		private unsubscribeFinder: (() => void) | null = null;
 		private animationFrameId: number | null = null;
 		private lastHighlightPos: { from: number; to: number } | null = null;
 
@@ -134,8 +135,10 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 				}
 			});
 
-			// Enable chaining playback across split transcript blocks
-			audioManager.setNextDirectiveFinder((current) => {
+			// Enable chaining playback across split transcript blocks.
+			// Each editor view registers its own finder; AudioManager tries
+			// all registered finders so switching files doesn't break chaining.
+			this.unsubscribeFinder = audioManager.addNextDirectiveFinder((current) => {
 				const fieldValue = this.view.state.field(transcriptField, false);
 				if (!fieldValue) return null;
 				const sameAudio = fieldValue.directives.filter(
@@ -285,13 +288,9 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 
 		destroy() {
 			this.unsubscribe?.();
+			this.unsubscribeFinder?.();
 			if (this.animationFrameId !== null) {
 				cancelAnimationFrame(this.animationFrameId);
-			}
-			try {
-				AudioManager.getInstance().setNextDirectiveFinder(null);
-			} catch {
-				// AudioManager may already be destroyed
 			}
 		}
 	},

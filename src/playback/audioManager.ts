@@ -21,9 +21,9 @@ export class AudioManager {
 	private currentDirective: TranscriptDirective | null = null;
 	private skipRegions: SkipMarker[] = [];
 	private listeners: Set<PlaybackListener> = new Set();
-	private nextDirectiveFinder:
-		| ((current: TranscriptDirective) => TranscriptDirective | null)
-		| null = null;
+	private nextDirectiveFinders: Set<
+		(current: TranscriptDirective) => TranscriptDirective | null
+	> = new Set();
 
 	private constructor(private app: App) {}
 
@@ -51,7 +51,7 @@ export class AudioManager {
 	static destroy(): void {
 		if (AudioManager.instance) {
 			AudioManager.instance.stop();
-			AudioManager.instance.nextDirectiveFinder = null;
+			AudioManager.instance.nextDirectiveFinders.clear();
 			AudioManager.instance = null;
 		}
 	}
@@ -203,12 +203,15 @@ export class AudioManager {
 	}
 
 	/**
-	 * Set a callback that finds the next directive to chain playback to.
+	 * Register a callback that finds the next directive to chain playback to.
+	 * Multiple finders can be registered (one per editor view); the first
+	 * non-null result wins. Returns an unsubscribe function.
 	 */
-	setNextDirectiveFinder(
-		finder: ((current: TranscriptDirective) => TranscriptDirective | null) | null
-	): void {
-		this.nextDirectiveFinder = finder;
+	addNextDirectiveFinder(
+		finder: (current: TranscriptDirective) => TranscriptDirective | null
+	): () => void {
+		this.nextDirectiveFinders.add(finder);
+		return () => this.nextDirectiveFinders.delete(finder);
 	}
 
 	/**
@@ -251,11 +254,13 @@ export class AudioManager {
 		// Check if we've reached the end time
 		const endTime = this.currentDirective?.attributes.end;
 		if (endTime !== undefined && currentTime >= endTime) {
-			if (this.nextDirectiveFinder && this.currentDirective) {
-				const next = this.nextDirectiveFinder(this.currentDirective);
-				if (next) {
-					this.advanceToDirective(next);
-					return;
+			if (this.currentDirective) {
+				for (const finder of this.nextDirectiveFinders) {
+					const next = finder(this.currentDirective);
+					if (next) {
+						this.advanceToDirective(next);
+						return;
+					}
 				}
 			}
 			this.stop();
