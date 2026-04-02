@@ -2,12 +2,14 @@ import type { AlignmentData, AlignedWord } from "../types";
 
 /**
  * Normalize content for cache key generation.
- * Strips skip markers and collapses whitespace so that lookups match
- * regardless of whether the caller passes raw or clean content.
+ * Strips skip markers, inline markdown formatting, and collapses whitespace
+ * so that lookups match regardless of whether the caller passes raw document
+ * text or AST-extracted content (which strips formatting like *italic*).
  */
 function normalizeContent(content: string): string {
 	return content
 		.replace(/:skip\{start=[\d.]+\s+end=[\d.]+\}/g, "")
+		.replace(/[*_~`]/g, "")
 		.replace(/\s+/g, " ")
 		.trim();
 }

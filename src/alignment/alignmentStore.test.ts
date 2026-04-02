@@ -119,6 +119,20 @@ describe("alignmentStore", () => {
 		expect(alignmentStore.has("audio.m4a", "hello")).toBe(false);
 	});
 
+	test("normalizes inline markdown formatting for key matching", () => {
+		const data = createMockAlignment("hello");
+		// Store with plain text (as AST-extracted directive.content would)
+		alignmentStore.set("audio.m4a", "read Blank Space by Marx", data);
+
+		// Lookup with raw doc text containing markdown formatting
+		expect(alignmentStore.has("audio.m4a", "read *Blank Space* by Marx")).toBe(true);
+		expect(alignmentStore.get("audio.m4a", "read *Blank Space* by Marx")).toEqual(data);
+
+		// Also works with bold, strikethrough, code
+		alignmentStore.set("audio.m4a", "bold and code text", data);
+		expect(alignmentStore.has("audio.m4a", "**bold** and `code` text")).toBe(true);
+	});
+
 	test("clear removes all alignments", () => {
 		alignmentStore.set("a.m4a", "content1", createMockAlignment("a"));
 		alignmentStore.set("b.m4a", "content2", createMockAlignment("b"));
