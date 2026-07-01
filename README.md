@@ -6,7 +6,7 @@ This experimental Obsidian plugin lets you turn audio files into interactive edi
 With these transcripts, you can:
 * hold Command and click anywhere in the transcript to start playing the audio file from there
 * delete regions like ordinary text; audio playback will skip those segments
-* copy and paste regions into other documents like ordinary text, preserving playback support
+* copy and paste regions like ordinary text, preserving playback support
 * position your cursor and press Return twice to split the transcript, so you can interleave normal Markdown
 
 ## Installation
@@ -45,6 +45,8 @@ Text of the transcript here.
 
 More ordinary Markdown here.
 ```
+
+Word-level timing information is inferred using Parakeet and stored in a cache, but not represented in the Markdown (to keep it human-readable).
 
 ### Start and end attributes
 
