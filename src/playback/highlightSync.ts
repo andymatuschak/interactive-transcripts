@@ -148,7 +148,7 @@ export const highlightSyncPlugin = ViewPlugin.fromClass(
 					(d) => d.content === current.content
 				);
 				if (idx === -1 || idx >= sameAudio.length - 1) return null;
-				return sameAudio[idx + 1];
+				return sameAudio[idx + 1] ?? null;
 			});
 		}
 

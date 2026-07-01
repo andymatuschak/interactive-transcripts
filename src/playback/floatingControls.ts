@@ -1,7 +1,8 @@
 import { ViewPlugin, ViewUpdate } from "@codemirror/view";
-import { setIcon } from "obsidian";
+import { editorInfoField, setIcon } from "obsidian";
 import { AudioManager, PlaybackState } from "./audioManager";
 import { transcriptField } from "../editor/state";
+import type { TranscriptDirective } from "../types";
 
 /**
  * Floating playback controls as a CodeMirror ViewPlugin.
@@ -9,6 +10,8 @@ import { transcriptField } from "../editor/state";
 export const floatingControlsPlugin = ViewPlugin.define((view) => {
 	const audioManager = AudioManager.getInstance();
 	let isDragging = false;
+	let currentFilePath = view.state.field(editorInfoField, false)?.file?.path ?? null;
+	let ownsPlayback = false;
 
 	// Create container
 	const container = document.createElement("div");
@@ -79,9 +82,34 @@ export const floatingControlsPlugin = ViewPlugin.define((view) => {
 		return `${mins}:${secs.toString().padStart(2, "0")}`;
 	};
 
+	const containsDirective = (directive: TranscriptDirective): boolean => {
+		const fieldValue = view.state.field(transcriptField, false);
+		if (!fieldValue) return false;
+
+		return fieldValue.directives.some((candidate) =>
+			candidate.audioPath === directive.audioPath &&
+			candidate.from === directive.from &&
+			candidate.to === directive.to
+		);
+	};
+
+	const containsAudioPath = (directive: TranscriptDirective): boolean => {
+		const fieldValue = view.state.field(transcriptField, false);
+		if (!fieldValue) return false;
+
+		return fieldValue.directives.some((candidate) =>
+			candidate.audioPath === directive.audioPath
+		);
+	};
+
 	// Update UI based on playback state
 	const updateUI = (state: PlaybackState) => {
-		if (state.directive && view.dom.parentElement?.classList.contains("is-live-preview")) {
+		ownsPlayback = !!state.directive && (
+			containsDirective(state.directive) ||
+			(ownsPlayback && containsAudioPath(state.directive))
+		);
+
+		if (ownsPlayback && view.dom.parentElement?.classList.contains("is-live-preview")) {
 			container.classList.add("is-visible");
 		} else {
 			container.classList.remove("is-visible");
@@ -114,9 +142,19 @@ export const floatingControlsPlugin = ViewPlugin.define((view) => {
 
 	return {
 		update(update: ViewUpdate) {
+			const nextFilePath = update.state.field(editorInfoField, false)?.file?.path ?? null;
+			if (nextFilePath !== currentFilePath) {
+				if (ownsPlayback && audioManager.getState().directive) {
+					audioManager.stop();
+				}
+				currentFilePath = nextFilePath;
+				updateUI(audioManager.getState());
+				return;
+			}
+
 			// If document changed and audio is playing, check if the directive still exists
 			const playbackState = audioManager.getState();
-			if (playbackState.directive && update.docChanged) {
+			if (ownsPlayback && playbackState.directive && update.docChanged) {
 				const fieldValue = update.state.field(transcriptField, false);
 				if (fieldValue) {
 					const stillExists = fieldValue.directives.some(
@@ -129,10 +167,12 @@ export const floatingControlsPlugin = ViewPlugin.define((view) => {
 					audioManager.stop();
 				}
 			}
+			updateUI(audioManager.getState());
 		},
 		destroy() {
-			// Stop playback when this editor is destroyed (e.g., file navigation)
-			audioManager.stop();
+			if (ownsPlayback && audioManager.getState().directive) {
+				audioManager.stop();
+			}
 			unsubscribe();
 			container.remove();
 		}
