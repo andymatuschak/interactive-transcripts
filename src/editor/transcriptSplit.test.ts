@@ -73,7 +73,7 @@ foo bar baz qux quux.
 
 		const state = createStateWithAlignment(doc, "test.m4a", "foo bar baz qux quux.", words);
 
-		// Replace "bar baz" with a blockquote (simulating Quote Leap)
+		// Replace "bar baz" with a blockquote (simulating an external plugin)
 		const replaceFrom = doc.indexOf("bar baz");
 		const replaceTo = replaceFrom + "bar baz".length;
 		const newState = externalReplace(state, [

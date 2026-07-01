@@ -242,7 +242,7 @@ function handleTextReplacement(tr: Transaction): Transaction | null {
 
 /**
  * Handle programmatic (non-user-event) replacements inside transcript blocks.
- * Detects when an external plugin (e.g., Quote Leap) replaces text inside
+ * Detects when an external plugin replaces text inside
  * transcript blocks and splits the transcript around each replacement.
  * Supports multiple replacements in a single transaction.
  */
@@ -382,7 +382,7 @@ function transcriptSplitFilter(tr: Transaction): Transaction | readonly Transact
 		if (deletionResult) return deletionResult;
 	}
 
-	// Handle external plugin replacements (non-user-event, e.g. Quote Leap)
+	// Handle external plugin replacements (non-user-event)
 	if (tr.annotation(Transaction.userEvent) === undefined) {
 		const externalResult = handleExternalReplacements(tr);
 		if (externalResult) return externalResult;

@@ -1,14 +1,15 @@
 {
-	"name": "obsidian-transcript",
+	"name": "interactive-transcripts",
 	"version": "0.1.0",
-	"description": "Rich audio transcript editing with word-level alignment",
+	"description": "Transform audio into editable interactive transcripts within ordinary Markdown documents",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "bun run scripts/build-watch.ts",
 		"build": "tsc -noEmit -skipLibCheck && bun run scripts/build-prod.ts",
+		"release:prepare": "bun run build && bun run scripts/prepare-release.ts",
 		"test": "bun test",
-		"harness:build": "bun build test-harness/test-entry.ts --outfile=test-harness/bundle.js --format=esm",
+		"harness:build": "bun run scripts/build-test-harness.ts",
 		"harness:serve": "python3 -m http.server 8765 -d test-harness",
 		"harness": "bun run harness:build && bun run harness:serve"
 	},
@@ -18,6 +19,7 @@
 	"devDependencies": {
 		"@types/bun": "latest",
 		"@types/node": "^16.11.6",
+		"obsidian": "1.11.4",
 		"tslib": "2.4.0",
 		"typescript": "^5.8.3"
 	},
@@ -27,7 +29,6 @@
 		"mdast-util-from-markdown": "^2.0.2",
 		"mdast-util-to-markdown": "^2.1.2",
 		"micromark": "^4.0.2",
-		"micromark-extension-directive": "^4.0.0",
-		"obsidian": "latest"
+		"micromark-extension-directive": "^4.0.0"
 	}
 }

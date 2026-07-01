@@ -1,10 +1,10 @@
 {
-	"id": "obsidian-transcript",
-	"name": "Transcript",
-	"version": "0.1.0",
-	"minAppVersion": "0.15.0",
-	"description": "Rich audio transcript editing with word-level alignment",
-	"author": "Andy Matuschak",
-	"authorUrl": "https://github.com/andymatuschak",
-	"isDesktopOnly": true
+  "id": "interactive-transcripts",
+  "name": "Interactive Transcripts",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Transform audio into editable interactive transcripts within ordinary Markdown documents",
+  "author": "Andy Matuschak",
+  "authorUrl": "https://github.com/andymatuschak",
+  "isDesktopOnly": true
 }

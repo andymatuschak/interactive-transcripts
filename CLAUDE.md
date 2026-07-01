@@ -8,25 +8,34 @@ Use **camelCase** for TypeScript files, not kebab-case:
 
 ## Project Structure
 
-- `src/alignment/` - Audio-to-text alignment via Python subprocess
+- `src/alignment/` - Local timestamped transcription, cache, and edit reconciliation
 - `src/core/` - Editor-agnostic utilities (parser, hash)
 - `src/editor/` - CodeMirror 6 extensions and state
 - `src/playback/` - Audio playback and sync
-- `python/` - Python alignment script using stable-ts
+- `python/` - Persistent Python speech server using `parakeet-mlx`
 
 ## Key Patterns
 
 ### Singletons
-`AudioManager` and `AlignmentManager` are singletons initialized in `main.ts` via `getInstance(app)`. They must be destroyed in `onunload()`.
+`AudioManager` and `AlignmentManager` are singletons initialized in `main.ts` via `initialize(...)`. They must be destroyed in `onunload()`.
 
 ### CodeMirror Extensions
-All CM6 extensions are registered in `main.ts`. ViewPlugins may be created before the plugin's `onload()` runs, so singletons accessed in ViewPlugins must handle uninitialized state gracefully.
+All CM6 extensions are registered in `main.ts`. Because several ViewPlugins access singletons during construction, initialize `AudioManager` and `AlignmentManager` before calling `registerEditorExtension`.
 
 ### Alignment Flow
 1. `alignmentLoaderPlugin` detects transcript directives
-2. `AlignmentManager` debounces, queues, and manages alignment generation
-3. `Aligner` runs the Python subprocess via `uv`
-4. Results are stored in `AlignmentCache` (persistent) and `alignmentStore` (in-memory)
+2. `AlignmentManager` loads cached timings, reconciles ordinary text edits, and queues transcription when needed
+3. `SpeechEngine` starts the Python speech server via `uv`
+4. `python/speechServer.py` validates/downloads the local model, transcribes with `parakeet-mlx`, and returns word timestamps
+5. Results are stored in `AlignmentCache` (persistent) and `alignmentStore` (in-memory)
+
+### Local Dependencies
+Runtime transcription requires:
+- `uv` on the user's machine
+- `ffmpeg` on the user's machine
+- a local model cache or a user-approved model download
+
+The plugin surfaces modals for missing `uv`, missing `ffmpeg`, and the first large model download. Keep those preflight paths friendly and explicit.
 
 ## Testing
 

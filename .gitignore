@@ -7,7 +7,12 @@
 
 # npm/bun
 node_modules
-bun.lock
+
+# Python
+python/.venv
+python/.pytest_cache
+__pycache__
+*.py[cod]
 
 # Don't include the compiled main.js file in the repo.
 # They should be uploaded to GitHub releases instead.
@@ -15,6 +20,9 @@ main.js
 
 # Exclude sourcemaps
 *.map
+
+# Release staging
+dist
 
 # obsidian
 data.json
@@ -24,6 +32,15 @@ data.json
 
 # Test vault (contains personal audio files)
 test-vault
+
+# Local audio/scratch files
+*.m4a
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.webm
+next-up.md
 
 # Cache
 cache
