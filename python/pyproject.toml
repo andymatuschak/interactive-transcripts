@@ -1,16 +1,10 @@
 [project]
-name = "transcript-aligner"
+name = "interactive-transcripts-speech"
 version = "0.1.0"
-description = "Word-level alignment for audio transcripts"
+description = "Local speech transcription server for Interactive Transcripts"
 requires-python = ">=3.10"
 dependencies = [
-    "stable-ts>=2.0.0",
-    "torch>=2.0.0",
-]
-
-[project.optional-dependencies]
-whisperx = [
-    "whisperx>=3.0.0",
+    "parakeet-mlx>=0.5.2",
 ]
 
 [dependency-groups]

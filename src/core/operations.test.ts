@@ -16,7 +16,7 @@ describe("splitTranscript", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "Hello world this is a test.",
 		segments: [
@@ -139,7 +139,7 @@ describe("splitAlignmentData", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "Hello world this is a test.",
 		segments: [
@@ -242,12 +242,12 @@ describe("splitAlignmentData", () => {
 		expect(before.audioHash).toBe("abc123");
 		expect(before.transcriptHash).toBe("def456");
 		expect(before.language).toBe("en");
-		expect(before.tool).toBe("stable-ts");
+		expect(before.tool).toBe("parakeet-mlx");
 
 		expect(after.audioHash).toBe("abc123");
 		expect(after.transcriptHash).toBe("def456");
 		expect(after.language).toBe("en");
-		expect(after.tool).toBe("stable-ts");
+		expect(after.tool).toBe("parakeet-mlx");
 	});
 
 	test("updates segment start/end times when splitting within segment", () => {
@@ -274,7 +274,7 @@ describe("splitTranscriptAroundRange", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "Hello world this is a test.",
 		segments: [
@@ -344,7 +344,7 @@ describe("deleteFromTranscript", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "Hello world this is a test.",
 		segments: [
@@ -430,7 +430,7 @@ describe("deleteFromTranscript", () => {
 		expect(result!.alignment.audioHash).toBe("abc123");
 		expect(result!.alignment.transcriptHash).toBe("def456");
 		expect(result!.alignment.language).toBe("en");
-		expect(result!.alignment.tool).toBe("stable-ts");
+		expect(result!.alignment.tool).toBe("parakeet-mlx");
 	});
 
 	test("handles deletion of single word", () => {
@@ -462,7 +462,7 @@ describe("snapToWordBoundaries", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "Hello world this is a test.",
 		segments: [
@@ -661,7 +661,7 @@ describe("splitTranscriptAtMultipleRanges", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "foo bar baz qux quux",
 		segments: [
@@ -800,7 +800,7 @@ describe("deleteFromTranscriptWithSkip", () => {
 		audioHash: "abc123",
 		transcriptHash: "def456",
 		language: "en",
-		tool: "stable-ts",
+		tool: "parakeet-mlx",
 		createdAt: Date.now(),
 		text: "Hello world this is a test.",
 		segments: [

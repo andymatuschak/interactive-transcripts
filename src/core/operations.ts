@@ -1,5 +1,5 @@
 import type { TranscriptDirective, AlignmentData, AlignedSegment, AlignedWord, SkipMarker } from "../types";
-import { serializeDirective } from "./serializer";
+import { serializeContentWithSkips, serializeDirective } from "./serializer";
 
 export interface DeleteResult {
 	markdown: string;
@@ -862,7 +862,6 @@ export function deleteFromTranscriptWithSkip(
 	const collapsed = collapseSkips(newSkips, { start: newStartTime, end: newEndTime }, newContent.length);
 
 	// Build the new content with skip markers
-	const { serializeContentWithSkips } = require("./serializer");
 	const contentWithSkips = serializeContentWithSkips(newContent, collapsed.skips);
 
 	// Update alignment data

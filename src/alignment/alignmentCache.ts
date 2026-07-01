@@ -2,23 +2,35 @@ import { App, TFile } from "obsidian";
 import type { AlignmentData } from "../types";
 import { hashFile, hashString, generateCacheKey } from "../core/hash";
 
-const CACHE_DIR = ".obsidian/plugins/obsidian-transcript/cache";
+const CACHE_VERSION = "parakeet-v1";
+
+function cacheDir(pluginDir: string): string {
+	return `${pluginDir}/cache/${CACHE_VERSION}`;
+}
 
 /**
  * Manages caching of alignment data.
  */
 export class AlignmentCache {
-	constructor(private app: App) {}
+	private readonly cacheDir: string;
+
+	constructor(private app: App, pluginDir: string) {
+		this.cacheDir = cacheDir(pluginDir);
+	}
 
 	/**
 	 * Get the cache directory path, creating it if needed.
 	 */
 	private async ensureCacheDir(): Promise<string> {
 		const adapter = this.app.vault.adapter;
-		if (!(await adapter.exists(CACHE_DIR))) {
-			await adapter.mkdir(CACHE_DIR);
+		let currentPath = "";
+		for (const part of this.cacheDir.split("/")) {
+			currentPath = currentPath ? `${currentPath}/${part}` : part;
+			if (!(await adapter.exists(currentPath))) {
+				await adapter.mkdir(currentPath);
+			}
 		}
-		return CACHE_DIR;
+		return this.cacheDir;
 	}
 
 	/**
@@ -89,8 +101,8 @@ export class AlignmentCache {
 	 */
 	async clearAll(): Promise<void> {
 		const adapter = this.app.vault.adapter;
-		if (await adapter.exists(CACHE_DIR)) {
-			const files = await adapter.list(CACHE_DIR);
+		if (await adapter.exists(this.cacheDir)) {
+			const files = await adapter.list(this.cacheDir);
 			for (const file of files.files) {
 				await adapter.remove(file);
 			}

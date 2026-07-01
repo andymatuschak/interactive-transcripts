@@ -14,7 +14,7 @@ const createMockAlignment = (word: string): AlignmentData => ({
 	audioHash: "abc123",
 	transcriptHash: "def456",
 	language: "en",
-	tool: "stable-ts",
+	tool: "parakeet-mlx",
 	text: word,
 	createdAt: Date.now(),
 });
@@ -66,7 +66,7 @@ describe("alignmentStore", () => {
 			audioHash: "abc",
 			transcriptHash: "def",
 			language: "en",
-			tool: "stable-ts",
+			tool: "parakeet-mlx",
 			text: "hello world",
 			createdAt: Date.now(),
 		};
@@ -99,7 +99,7 @@ describe("alignmentStore", () => {
 			audioHash: "abc",
 			transcriptHash: "def",
 			language: "en",
-			tool: "stable-ts",
+			tool: "parakeet-mlx",
 			text: "hello world",
 			createdAt: Date.now(),
 		};

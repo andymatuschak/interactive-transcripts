@@ -100,8 +100,8 @@ export class PlayButtonWidget extends WidgetType {
 				const svg = createRadialProgress(percent);
 				button.appendChild(svg);
 				button.addClass("transcript-generating");
-				const phase = currentProgress.phase || "loading";
-				button.setAttribute("aria-label", `${phase}: ${percent}%`);
+				const label = currentProgress.phase === "downloading" ? "Downloading model" : "Transcribing";
+				button.setAttribute("aria-label", `${label}: ${percent}%`);
 				return;
 			}
 
@@ -143,7 +143,7 @@ export class PlayButtonWidget extends WidgetType {
 			e.preventDefault();
 			e.stopPropagation();
 
-			// Don't allow click while alignment is loading
+			// Don't allow click while transcription is running
 			if (currentProgress.status === "pending" || currentProgress.status === "generating") {
 				return;
 			}

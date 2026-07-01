@@ -73,7 +73,6 @@ function handleClick(event: MouseEvent, view: EditorView): boolean {
 
 	// Check if we have alignment data
 	if (!alignmentStore.has(directive.audioPath, directive.content)) {
-		console.debug("No alignment data for", directive.audioPath);
 		return false;
 	}
 

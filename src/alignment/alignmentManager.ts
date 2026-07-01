@@ -1,14 +1,18 @@
 import { App, TFile } from "obsidian";
 import { alignmentStore } from "./alignmentStore";
-import { Aligner } from "./aligner";
+import { SpeechEngine, DEFAULT_PARAKEET_MODEL } from "./speechEngine";
 import { AlignmentCache } from "./alignmentCache";
+import { parseContentWithSkips } from "../core/parser";
+import { hashString } from "../core/hash";
+import { reconcileAlignmentToText } from "./reconcile";
+import { DEFAULT_SETTINGS, type TranscriptPluginSettings } from "../settings";
 import type { TranscriptDirective, AlignmentData, AlignedSegment, AlignedWord } from "../types";
 
 export type AlignmentStatus = "idle" | "pending" | "generating" | "complete" | "error";
 
 export interface AlignmentProgress {
 	status: AlignmentStatus;
-	phase?: "loading" | "aligning" | "adjusting";
+	phase?: "downloading" | "transcribing";
 	percent?: number;
 }
 
@@ -26,7 +30,7 @@ type StatusListener = (audioPath: string, progress: AlignmentProgress) => void;
 export class AlignmentManager {
 	private static instance: AlignmentManager | null = null;
 
-	private aligner: Aligner;
+	private speechEngine: SpeechEngine;
 	private cache: AlignmentCache;
 
 	// Status tracking per audio path
@@ -46,19 +50,27 @@ export class AlignmentManager {
 	// to detect stale async requests after content reverts
 	private requestGeneration: Map<string, number> = new Map();
 
-	private constructor(private app: App) {
-		this.aligner = new Aligner(app);
-		this.cache = new AlignmentCache(app);
+	private constructor(
+		private app: App,
+		pluginDir: string,
+		private getSettings: () => TranscriptPluginSettings = () => DEFAULT_SETTINGS
+	) {
+		this.speechEngine = new SpeechEngine(app, pluginDir);
+		this.cache = new AlignmentCache(app, pluginDir);
 	}
 
 	/**
 	 * Initialize the singleton with the app. Must be called once in onload().
 	 */
-	static initialize(app: App): AlignmentManager {
+	static initialize(
+		app: App,
+		pluginDir: string,
+		getSettings?: () => TranscriptPluginSettings
+	): AlignmentManager {
 		if (AlignmentManager.instance) {
 			throw new Error("AlignmentManager already initialized");
 		}
-		AlignmentManager.instance = new AlignmentManager(app);
+		AlignmentManager.instance = new AlignmentManager(app, pluginDir, getSettings);
 		return AlignmentManager.instance;
 	}
 
@@ -94,7 +106,6 @@ export class AlignmentManager {
 		// Find the audio file
 		const audioFile = this.app.vault.getAbstractFileByPath(audioPath);
 		if (!(audioFile instanceof TFile)) {
-			console.debug(`Audio file not found: ${audioPath}`);
 			return;
 		}
 
@@ -118,6 +129,16 @@ export class AlignmentManager {
 		if (derived) {
 			alignmentStore.set(audioPath, directive.content, derived);
 			await this.cache.set(audioFile, directive.content, derived);
+			this.setProgress(audioPath, { status: "complete" });
+			return;
+		}
+
+		// Try a cheap token-diff reconciliation against existing alignment for
+		// small edits that do not need acoustic realignment.
+		const reconciled = await this.tryReconcileAlignment(directive, audioFile);
+		if (reconciled) {
+			alignmentStore.set(audioPath, directive.content, reconciled);
+			await this.cache.set(audioFile, directive.content, reconciled);
 			this.setProgress(audioPath, { status: "complete" });
 			return;
 		}
@@ -338,7 +359,7 @@ export class AlignmentManager {
 				continue;
 			}
 
-			this.setProgress(audioPath, { status: "generating", phase: "loading", percent: 0 });
+			this.setProgress(audioPath, { status: "generating", phase: "transcribing", percent: 0 });
 
 			try {
 				const data = await this.generateAlignment(task, (phase, percent) => {
@@ -371,20 +392,33 @@ export class AlignmentManager {
 
 	private async generateAlignment(
 		task: AlignmentTask,
-		onProgress: (phase: "loading" | "aligning" | "adjusting", percent: number) => void
+		onProgress: (phase: "downloading" | "transcribing", percent: number) => void
 	): Promise<AlignmentData> {
 		const { directive, audioFile, abortController } = task;
+		const parsedContent = parseContentWithSkips(directive.content);
+		const settings = this.currentSettings();
 
-		const data = await this.aligner.align(audioFile, directive.content, {
-			tool: "stable-ts",
-			model: "turbo",
+		const parakeetData = await this.speechEngine.transcribe(audioFile, {
+			model: settings.parakeetModel,
+			modelPath: settings.modelPath,
 			start: directive.attributes.start,
 			end: directive.attributes.end,
+			skips: parsedContent.skips.map((skip) => ({
+				start: skip.audioStart,
+				end: skip.audioEnd,
+			})),
+			chunkDuration: settings.parakeetChunkDuration,
+			overlapDuration: settings.parakeetOverlapDuration,
+			paragraphBreakGap: settings.paragraphBreakGap,
+			clampWordEnds: settings.clampWordEnds,
 			signal: abortController.signal,
 			onProgress: (info) => {
 				onProgress(info.phase, info.percent);
 			},
 		});
+
+		const data = this.projectTranscriptionToDirective(parakeetData, parsedContent.text);
+		data.transcriptHash = await hashString(parsedContent.text);
 
 		// Cache the result
 		await this.cache.set(audioFile, directive.content, data);
@@ -406,7 +440,93 @@ export class AlignmentManager {
 
 		this.statusListeners.clear();
 
-		// Shutdown the alignment server
-		this.aligner.shutdown();
+		// Shutdown the local speech server
+		this.speechEngine.shutdown();
+	}
+
+	private currentSettings(): TranscriptPluginSettings {
+		const settings = this.getSettings();
+		return {
+			...DEFAULT_SETTINGS,
+			...settings,
+			parakeetModel: settings.parakeetModel || DEFAULT_PARAKEET_MODEL,
+		};
+	}
+
+	/**
+	 * Transcribe a standalone audio file and cache the resulting
+	 * timestamped transcript.
+	 */
+	async transcribeAudioFile(
+		audioFile: TFile,
+		audioPath: string = audioFile.path,
+		onProgress?: (progress: AlignmentProgress) => void
+	): Promise<AlignmentData> {
+		const settings = this.currentSettings();
+		const data = await this.speechEngine.transcribe(audioFile, {
+			model: settings.parakeetModel,
+			modelPath: settings.modelPath,
+			chunkDuration: settings.parakeetChunkDuration,
+			overlapDuration: settings.parakeetOverlapDuration,
+			paragraphBreakGap: settings.paragraphBreakGap,
+			clampWordEnds: settings.clampWordEnds,
+			onProgress: (info) => {
+				onProgress?.({ status: "generating", phase: info.phase, percent: info.percent });
+			},
+		});
+
+		alignmentStore.set(audioPath, data.text, data);
+		await this.cache.set(audioFile, data.text, data);
+		return data;
+	}
+
+	private async tryReconcileAlignment(
+		directive: TranscriptDirective,
+		audioFile: TFile
+	): Promise<AlignmentData | null> {
+		const parsedContent = parseContentWithSkips(directive.content);
+		const sources = alignmentStore.findByAudioPath(directive.audioPath);
+
+		let best: { alignment: AlignmentData; similarity: number } | null = null;
+		for (const source of sources) {
+			const result = reconcileAlignmentToText(source, parsedContent.text, 0.65);
+			if (!result) continue;
+			if (!best || result.similarity > best.similarity) {
+				best = result;
+			}
+		}
+
+		if (!best) return null;
+
+		const alignment = {
+			...best.alignment,
+			transcriptHash: await hashString(parsedContent.text),
+			tool: "parakeet-mlx-reconciled",
+			createdAt: Date.now(),
+		};
+
+		return alignment;
+	}
+
+	private projectTranscriptionToDirective(data: AlignmentData, directiveText: string): AlignmentData {
+		const normalizedDataText = data.text.replace(/\s+/g, " ").trim();
+		const normalizedDirectiveText = directiveText.replace(/\s+/g, " ").trim();
+
+		if (normalizedDataText === normalizedDirectiveText) {
+			return { ...data, text: directiveText };
+		}
+
+		const projected = reconcileAlignmentToText(data, directiveText, 0.55);
+		if (!projected) {
+			throw new Error("Generated transcript is too different from the directive text to project timestamps");
+		}
+
+		return {
+			...projected.alignment,
+			audioHash: data.audioHash,
+			language: data.language,
+			tool: "parakeet-mlx-projected",
+			createdAt: Date.now(),
+		};
 	}
 }

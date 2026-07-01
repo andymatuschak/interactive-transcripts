@@ -10,24 +10,29 @@ import { floatingControlsPlugin } from "./playback/floatingControls";
 import { highlightSyncPlugin } from "./playback/highlightSync";
 import { initAlignmentLoader, alignmentLoaderPlugin } from "./alignment/alignmentLoader";
 import { AlignmentManager } from "./alignment/alignmentManager";
+import { FfmpegNotFoundError, ModelDownloadCancelledError, UvNotFoundError } from "./alignment/speechEngine";
 import { transcriptEditingExtension } from "./editor/transcriptEditing";
 import { TranscriptSettingTab, DEFAULT_SETTINGS, type TranscriptPluginSettings } from "./settings";
 import { serializeDirective } from "./core/serializer";
-import { transcribeAudio, mimeTypeForExtension } from "./transcription/transcriber";
 
-const AUDIO_EMBED_REGEX = /!\[\[(.+?\.(m4a|mp3|mp4|wav|ogg|webm|flac))\]\]/i;
+const AUDIO_EMBED_REGEX = /!\[\[([^|\]#]+?\.(?:m4a|mp3|mp4|wav|ogg|webm|flac))(?:#[^|\]]*)?(?:\|[^\]]*)?\]\]/i;
+
+function normalizePluginDir(dir: string): string {
+	return dir.replace(/\\/g, "/").replace(/\/+$/, "");
+}
 
 export default class TranscriptPlugin extends Plugin {
 	settings: TranscriptPluginSettings = DEFAULT_SETTINGS;
 
 	async onload(): Promise<void> {
-		console.debug("Transcript plugin loaded");
-
 		await this.loadSettings();
+		const pluginDir = normalizePluginDir(
+			this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`
+		);
 
 		// Initialize singletons
 		AudioManager.initialize(this.app);
-		initAlignmentLoader(this.app);
+		initAlignmentLoader(this.app, pluginDir, () => this.settings);
 
 		this.addSettingTab(
 			new TranscriptSettingTab(
@@ -58,7 +63,7 @@ export default class TranscriptPlugin extends Plugin {
 
 		this.addCommand({
 			id: "transcribe-audio",
-			name: "Transcribe audio with Gemini",
+			name: "Transcribe audio",
 			editorCallback: async (editor, view) => {
 				const line = editor.getLine(editor.getCursor().line);
 				const match = line.match(AUDIO_EMBED_REGEX);
@@ -67,20 +72,7 @@ export default class TranscriptPlugin extends Plugin {
 					return;
 				}
 
-				const apiKey = this.settings.geminiApiKey;
-				if (!apiKey) {
-					new Notice("Set your Gemini API key in Transcript plugin settings");
-					return;
-				}
-
 				const linkpath = match[1]!;
-				const ext = match[2]!;
-				const mimeType = mimeTypeForExtension(ext);
-				if (!mimeType) {
-					new Notice(`Unsupported audio format: ${ext}`);
-					return;
-				}
-
 				const currentFile = view.file;
 				if (!currentFile) {
 					new Notice("No active file");
@@ -96,15 +88,19 @@ export default class TranscriptPlugin extends Plugin {
 					return;
 				}
 
-				const notice = new Notice("Transcribing audio...", 0);
+				const notice = new Notice("Transcribing: 0%", 0);
 				try {
-					const audioData = await this.app.vault.readBinary(audioFile);
-					const transcript = await transcribeAudio(audioData, mimeType, apiKey);
+					const alignmentManager = AlignmentManager.getInstance();
+					const alignment = await alignmentManager.transcribeAudioFile(audioFile, linkpath, (progress) => {
+						const percent = progress.percent ?? 0;
+						const label = progress.phase === "downloading" ? "Downloading model" : "Transcribing";
+						notice.setMessage(`${label}: ${percent}%`);
+					});
 
 					const directive = serializeDirective({
 						audioPath: linkpath,
 						attributes: {},
-						content: transcript,
+						content: alignment.text,
 						from: 0,
 						to: 0,
 						contentFrom: 0,
@@ -121,6 +117,13 @@ export default class TranscriptPlugin extends Plugin {
 					new Notice("Transcription complete");
 				} catch (err) {
 					notice.hide();
+					if (
+						err instanceof UvNotFoundError ||
+						err instanceof FfmpegNotFoundError ||
+						err instanceof ModelDownloadCancelledError
+					) {
+						return;
+					}
 					const msg = err instanceof Error ? err.message : String(err);
 					new Notice(`Transcription failed: ${msg}`);
 				}
@@ -139,6 +142,5 @@ export default class TranscriptPlugin extends Plugin {
 	onunload(): void {
 		AudioManager.destroy();
 		AlignmentManager.destroy();
-		console.debug("Transcript plugin unloaded");
 	}
 }

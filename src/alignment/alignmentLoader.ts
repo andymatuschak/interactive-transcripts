@@ -2,13 +2,18 @@ import { App } from "obsidian";
 import { ViewPlugin, ViewUpdate, EditorView } from "@codemirror/view";
 import { transcriptField } from "../editor/state";
 import { AlignmentManager } from "./alignmentManager";
+import type { TranscriptPluginSettings } from "../settings";
 
 /**
  * Initialize the alignment manager with the app.
  * Must be called in plugin.onload() before registerEditorExtension().
  */
-export function initAlignmentLoader(app: App): void {
-	AlignmentManager.initialize(app);
+export function initAlignmentLoader(
+	app: App,
+	pluginDir: string,
+	getSettings?: () => TranscriptPluginSettings
+): void {
+	AlignmentManager.initialize(app, pluginDir, getSettings);
 }
 
 /**

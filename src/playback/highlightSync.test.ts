@@ -25,7 +25,7 @@ const createAlignment = (words: { word: string; start: number; end: number }[]):
 	audioHash: "abc123",
 	transcriptHash: "def456",
 	language: "en",
-	tool: "stable-ts",
+	tool: "parakeet-mlx",
 	text: words.map(w => w.word).join(" "),
 	createdAt: Date.now(),
 });
