@@ -1,6 +1,6 @@
 import { App, TFile } from "obsidian";
 import { alignmentStore } from "./alignmentStore";
-import { SpeechEngine, DEFAULT_PARAKEET_MODEL } from "./speechEngine";
+import { SpeechEngineManager, DEFAULT_PARAKEET_MODEL } from "./speechEngine";
 import { AlignmentCache } from "./alignmentCache";
 import { parseContentWithSkips } from "../core/parser";
 import { hashString } from "../core/hash";
@@ -30,7 +30,7 @@ type StatusListener = (audioPath: string, progress: AlignmentProgress) => void;
 export class AlignmentManager {
 	private static instance: AlignmentManager | null = null;
 
-	private speechEngine: SpeechEngine;
+	private speechEngine: SpeechEngineManager;
 	private cache: AlignmentCache;
 
 	// Status tracking per audio path
@@ -55,9 +55,10 @@ export class AlignmentManager {
 		pluginDir: string,
 		private getSettings: () => TranscriptPluginSettings = () => DEFAULT_SETTINGS
 	) {
-		this.speechEngine = new SpeechEngine(app, pluginDir);
+		this.speechEngine = new SpeechEngineManager(app, pluginDir);
 		this.cache = new AlignmentCache(app, pluginDir);
 	}
+
 
 	/**
 	 * Initialize the singleton with the app. Must be called once in onload().
@@ -398,8 +399,25 @@ export class AlignmentManager {
 		const parsedContent = parseContentWithSkips(directive.content);
 		const settings = this.currentSettings();
 
+		const providerType = settings.speechProvider || "local";
+		let apiKey = "";
+		let model = settings.parakeetModel;
+
+		if (providerType === "openai") {
+			apiKey = settings.openAiApiKey;
+			model = settings.openAiModel || "whisper-1";
+		} else if (providerType === "gemini") {
+			apiKey = settings.geminiApiKey;
+			model = settings.geminiModel || "gemini-2.0-flash";
+		} else if (providerType === "openrouter") {
+			apiKey = settings.openRouterApiKey;
+			model = settings.openRouterModel || "google/gemini-2.5-flash";
+		}
+
 		const parakeetData = await this.speechEngine.transcribe(audioFile, {
-			model: settings.parakeetModel,
+			providerType,
+			apiKey,
+			model,
 			modelPath: settings.modelPath,
 			start: directive.attributes.start,
 			end: directive.attributes.end,
@@ -463,8 +481,25 @@ export class AlignmentManager {
 		onProgress?: (progress: AlignmentProgress) => void
 	): Promise<AlignmentData> {
 		const settings = this.currentSettings();
+		const providerType = settings.speechProvider || "local";
+		let apiKey = "";
+		let model = settings.parakeetModel;
+
+		if (providerType === "openai") {
+			apiKey = settings.openAiApiKey;
+			model = settings.openAiModel || "whisper-1";
+		} else if (providerType === "gemini") {
+			apiKey = settings.geminiApiKey;
+			model = settings.geminiModel || "gemini-2.0-flash";
+		} else if (providerType === "openrouter") {
+			apiKey = settings.openRouterApiKey;
+			model = settings.openRouterModel || "google/gemini-2.5-flash";
+		}
+
 		const data = await this.speechEngine.transcribe(audioFile, {
-			model: settings.parakeetModel,
+			providerType,
+			apiKey,
+			model,
 			modelPath: settings.modelPath,
 			chunkDuration: settings.parakeetChunkDuration,
 			overlapDuration: settings.parakeetOverlapDuration,

@@ -1,7 +1,15 @@
 import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
 import { DEFAULT_PARAKEET_MODEL } from "./alignment/speechEngine";
+import type { SpeechProviderType } from "./types";
 
 export interface TranscriptPluginSettings {
+	speechProvider: SpeechProviderType;
+	openAiApiKey: string;
+	openAiModel: string;
+	geminiApiKey: string;
+	geminiModel: string;
+	openRouterApiKey: string;
+	openRouterModel: string;
 	parakeetModel: string;
 	modelPath: string;
 	parakeetChunkDuration: number;
@@ -11,6 +19,13 @@ export interface TranscriptPluginSettings {
 }
 
 export const DEFAULT_SETTINGS: TranscriptPluginSettings = {
+	speechProvider: "local",
+	openAiApiKey: "",
+	openAiModel: "whisper-1",
+	geminiApiKey: "",
+	geminiModel: "gemini-2.0-flash",
+	openRouterApiKey: "",
+	openRouterModel: "google/gemini-2.5-flash",
 	parakeetModel: DEFAULT_PARAKEET_MODEL,
 	modelPath: "",
 	parakeetChunkDuration: 120,
@@ -39,18 +54,132 @@ export class TranscriptSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Model path")
-			.setDesc("Optional local model folder containing config.json and model.safetensors")
-			.addText((text) =>
-				text
-					.setPlaceholder("/path/to/model")
-					.setValue(this.getSettings().modelPath)
+			.setName("Speech transcription provider")
+			.setDesc("Choose between local speech recognition (Apple Silicon) or cloud providers")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("local", "Local (Parakeet-MLX)")
+					.addOption("openai", "OpenAI (Whisper API)")
+					.addOption("gemini", "Google Gemini (Gemini API)")
+					.addOption("openrouter", "OpenRouter (Gemini / Multimodal Models)")
+					.setValue(this.getSettings().speechProvider || "local")
 					.onChange(async (value) => {
 						const settings = this.getSettings();
-						settings.modelPath = value.trim();
+						settings.speechProvider = value as SpeechProviderType;
 						await this.saveSettings(settings);
+						this.display();
 					})
 			);
+
+		const currentProvider = this.getSettings().speechProvider || "local";
+
+		if (currentProvider === "openai") {
+			new Setting(containerEl)
+				.setName("OpenAI API key")
+				.setDesc("API Key for OpenAI Whisper audio transcription")
+				.addText((text) =>
+					text
+						.setPlaceholder("sk-...")
+						.setValue(this.getSettings().openAiApiKey)
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.openAiApiKey = value.trim();
+							await this.saveSettings(settings);
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("OpenAI Whisper model")
+				.setDesc("Model name to use for Whisper API")
+				.addText((text) =>
+					text
+						.setPlaceholder("whisper-1")
+						.setValue(this.getSettings().openAiModel || "whisper-1")
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.openAiModel = value.trim() || "whisper-1";
+							await this.saveSettings(settings);
+						})
+				);
+		} else if (currentProvider === "gemini") {
+			new Setting(containerEl)
+				.setName("Gemini API key")
+				.setDesc("API Key for Google Gemini audio transcription")
+				.addText((text) =>
+					text
+						.setPlaceholder("AIzaSy...")
+						.setValue(this.getSettings().geminiApiKey)
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.geminiApiKey = value.trim();
+							await this.saveSettings(settings);
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("Gemini model")
+				.setDesc("Model name for Gemini STT")
+				.addText((text) =>
+					text
+						.setPlaceholder("gemini-2.0-flash")
+						.setValue(this.getSettings().geminiModel || "gemini-2.0-flash")
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.geminiModel = value.trim() || "gemini-2.0-flash";
+							await this.saveSettings(settings);
+						})
+				);
+		} else if (currentProvider === "openrouter") {
+			new Setting(containerEl)
+				.setName("OpenRouter API key")
+				.setDesc("API Key for OpenRouter API")
+				.addText((text) =>
+					text
+						.setPlaceholder("sk-or-...")
+						.setValue(this.getSettings().openRouterApiKey)
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.openRouterApiKey = value.trim();
+							await this.saveSettings(settings);
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("OpenRouter model")
+				.setDesc("Select an audio-capable model on OpenRouter")
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOption("google/gemini-2.5-flash", "Gemini 2.5 Flash")
+						.addOption("google/gemini-2.5-pro", "Gemini 2.5 Pro")
+						.addOption("google/gemini-2.0-flash-001", "Gemini 2.0 Flash 001")
+						.addOption("openai/gpt-4o", "OpenAI GPT-4o")
+						.addOption("openai/gpt-4o-mini", "OpenAI GPT-4o Mini")
+						.addOption("anthropic/claude-3.5-sonnet", "Claude 3.5 Sonnet")
+						.addOption("qwen/qwen-vl-plus", "Qwen VL Plus")
+						.addOption("meta-llama/llama-3.2-90b-vision-instruct", "Llama 3.2 90B Vision")
+						.setValue(this.getSettings().openRouterModel || "google/gemini-2.5-flash")
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.openRouterModel = value;
+							await this.saveSettings(settings);
+						})
+				);
+		} else {
+			new Setting(containerEl)
+				.setName("Model path")
+				.setDesc("Optional local model folder containing config.json and model.safetensors")
+				.addText((text) =>
+					text
+						.setPlaceholder("/path/to/model")
+						.setValue(this.getSettings().modelPath)
+						.onChange(async (value) => {
+							const settings = this.getSettings();
+							settings.modelPath = value.trim();
+							await this.saveSettings(settings);
+						})
+				);
+		}
+
 
 		new Setting(containerEl)
 			.setName("Chunk duration")
@@ -111,3 +240,4 @@ export class TranscriptSettingTab extends PluginSettingTab {
 			);
 	}
 }
+

@@ -1,4 +1,4 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Plugin, MarkdownView } from "obsidian";
 import { transcriptField } from "./editor/state";
 import { wordHighlightField } from "./editor/highlightState";
 import { livePreviewField, livePreviewDetector } from "./editor/editorMode";
@@ -60,6 +60,21 @@ export default class TranscriptPlugin extends Plugin {
 			highlightSyncPlugin,
 			transcriptEditingExtension,
 		]);
+
+		this.registerEvent(
+			this.app.workspace.on("active-leaf-change", () => {
+				AudioManager.getInstance().stop();
+			})
+		);
+
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!activeView || activeView.getMode() !== "source") {
+					AudioManager.getInstance().stop();
+				}
+			})
+		);
 
 		this.addCommand({
 			id: "transcribe-audio",

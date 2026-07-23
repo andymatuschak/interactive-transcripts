@@ -69,3 +69,9 @@ export interface AlignmentData {
 	segments: AlignedSegment[];
 	text: string;
 }
+
+/**
+ * Available speech transcription providers.
+ */
+export type SpeechProviderType = "local" | "openai" | "gemini" | "openrouter";
+
