@@ -17,26 +17,9 @@ let uvRequiredModalOpen = false;
 let ffmpegRequiredModalOpen = false;
 let modelDownloadPrompt: Promise<boolean> | null = null;
 
+import type { ITranscriptionProvider, SpeechEngineOptions, SpeechProgressInfo } from "./provider";
+export type { SpeechEngineOptions, SpeechProgressInfo } from "./provider";
 export type SpeechPhase = "downloading" | "transcribing";
-
-export interface SpeechProgressInfo {
-	phase: SpeechPhase;
-	percent: number;
-}
-
-export interface SpeechEngineOptions {
-	model?: string;
-	modelPath?: string;
-	start?: number;
-	end?: number;
-	skips?: Array<{ start: number; end: number }>;
-	chunkDuration?: number;
-	overlapDuration?: number;
-	paragraphBreakGap?: number;
-	clampWordEnds?: boolean;
-	onProgress?: (info: SpeechProgressInfo) => void;
-	signal?: AbortSignal;
-}
 
 interface SpeechRequest {
 	action: "transcribe";
@@ -311,7 +294,10 @@ function parseProgressOutput(message: string): SpeechProgressInfo | null {
 /**
  * Persistent local speech engine backed by Parakeet MLX.
  */
-export class SpeechEngine {
+export class LocalParakeetEngine implements ITranscriptionProvider {
+	readonly id = "local";
+	readonly name = "Local Parakeet-MLX";
+
 	private serverProcess: ChildProcess | null = null;
 	private serverReady = false;
 	private idleTimer: NodeJS.Timeout | null = null;
@@ -646,3 +632,44 @@ export class SpeechEngine {
 		return result;
 	}
 }
+
+import { OpenAISpeechProvider } from "./openAiProvider";
+import { GeminiSpeechProvider } from "./geminiProvider";
+import { OpenRouterProvider } from "./openRouterProvider";
+
+// Alias for backward compatibility
+export const SpeechEngine = LocalParakeetEngine;
+
+export class SpeechEngineManager {
+	private localEngine: LocalParakeetEngine;
+	private openAiProvider: OpenAISpeechProvider;
+	private geminiProvider: GeminiSpeechProvider;
+	private openRouterProvider: OpenRouterProvider;
+
+	constructor(private app: App, pluginDir: string) {
+		this.localEngine = new LocalParakeetEngine(app, pluginDir);
+		this.openAiProvider = new OpenAISpeechProvider(app);
+		this.geminiProvider = new GeminiSpeechProvider(app);
+		this.openRouterProvider = new OpenRouterProvider(app);
+	}
+
+	getProvider(providerType: string = "local"): ITranscriptionProvider {
+		if (providerType === "openai") return this.openAiProvider;
+		if (providerType === "gemini") return this.geminiProvider;
+		if (providerType === "openrouter") return this.openRouterProvider;
+		return this.localEngine;
+	}
+
+	async transcribe(
+		audioFile: TFile,
+		options: SpeechEngineOptions & { providerType?: string } = {}
+	): Promise<AlignmentData> {
+		const provider = this.getProvider(options.providerType);
+		return provider.transcribe(audioFile, options);
+	}
+
+	shutdown(): void {
+		this.localEngine.shutdown();
+	}
+}
+
