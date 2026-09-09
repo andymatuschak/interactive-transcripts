@@ -14,6 +14,7 @@ import { FfmpegNotFoundError, ModelDownloadCancelledError, UvNotFoundError } fro
 import { transcriptEditingExtension } from "./editor/transcriptEditing";
 import { TranscriptSettingTab, DEFAULT_SETTINGS, type TranscriptPluginSettings } from "./settings";
 import { serializeDirective } from "./core/serializer";
+import { processReadingTranscripts } from "./readingView";
 
 const AUDIO_EMBED_REGEX = /!\[\[([^|\]#]+?\.(?:m4a|mp3|mp4|wav|ogg|webm|flac))(?:#[^|\]]*)?(?:\|[^\]]*)?\]\]/i;
 
@@ -60,6 +61,10 @@ export default class TranscriptPlugin extends Plugin {
 			highlightSyncPlugin,
 			transcriptEditingExtension,
 		]);
+
+		this.registerMarkdownPostProcessor((element, context) =>
+			processReadingTranscripts(this.app, element, context)
+		);
 
 		this.addCommand({
 			id: "transcribe-audio",

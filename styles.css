@@ -48,8 +48,27 @@
 	font-family: "Prestige Elite Std", var(--font-monospace);
 }
 
+.transcript-reading-block {
+	position: relative;
+	margin-block: 1em;
+	font-family: "Prestige Elite Std", var(--font-monospace);
+}
+
+.transcript-reading-consumed {
+	display: none;
+}
+
+.transcript-reading-content > :first-child {
+	margin-top: 0;
+}
+
+.transcript-reading-content > :last-child {
+	margin-bottom: 0;
+}
+
 /* Pulsing animation when alignment is generating */
-.transcript-content-line.transcript-aligning {
+.transcript-content-line.transcript-aligning,
+.transcript-reading-block.transcript-aligning {
 	animation: transcript-pulse 1.2s ease-in-out infinite;
 }
 
@@ -128,6 +147,10 @@
 
 .transcript-floating-controls.is-visible {
 	display: flex;
+}
+
+.transcript-reading-controls {
+	position: fixed;
 }
 
 .transcript-control-btn {

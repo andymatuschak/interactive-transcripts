@@ -6,6 +6,8 @@
 export interface TranscriptDirective {
 	/** Audio file path from [filename.m4a] */
 	audioPath: string;
+	/** Vault path of the note containing the directive, when known. */
+	sourcePath?: string;
 	/** Optional time bounds (floating-point seconds, e.g., 5.123) */
 	attributes: {
 		start?: number;

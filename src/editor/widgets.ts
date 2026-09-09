@@ -148,10 +148,8 @@ export class PlayButtonWidget extends WidgetType {
 				return;
 			}
 
-			const state = audioManager.getState();
-
 			// If this directive is currently active, toggle play/pause
-			if (state.directive?.from === this.directive.from) {
+			if (audioManager.isCurrentDirective(this.directive)) {
 				audioManager.togglePlayPause();
 			} else {
 				// Play this directive from the start

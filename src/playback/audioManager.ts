@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import type { SkipMarker, TranscriptDirective } from "../types";
 import { parseContentWithSkips } from "../core/parser";
 import { resolveAudioFile } from "../core/audioFileResolver";
+import { preserveDirectiveSource } from "./directiveHandoff";
 
 export interface PlaybackState {
 	isPlaying: boolean;
@@ -69,7 +70,7 @@ export class AudioManager {
 		this.stop();
 
 		// Resolve audio file path to a URL
-		const audioUrl = await this.resolveAudioUrl(directive.audioPath);
+		const audioUrl = await this.resolveAudioUrl(directive);
 		if (!audioUrl) {
 			new Notice(`Audio file not found: ${directive.audioPath}`);
 			return;
@@ -189,10 +190,22 @@ export class AudioManager {
 	 */
 	isPlayingDirective(directive: TranscriptDirective): boolean {
 		return (
-			this.currentDirective !== null &&
-			this.currentDirective.from === directive.from &&
+			this.isCurrentDirective(directive) &&
 			this.audio !== null &&
 			!this.audio.paused
+		);
+	}
+
+	/** Check whether a directive owns the current audio, including while paused. */
+	isCurrentDirective(directive: TranscriptDirective): boolean {
+		if (!this.currentDirective) return false;
+
+		return (
+			this.currentDirective.audioPath === directive.audioPath &&
+			this.currentDirective.content === directive.content &&
+			this.currentDirective.from === directive.from &&
+			(this.currentDirective.sourcePath ?? null) ===
+				(directive.sourcePath ?? null)
 		);
 	}
 
@@ -220,12 +233,15 @@ export class AudioManager {
 	 * Advance playback to the next directive without restarting the audio element.
 	 */
 	private advanceToDirective(next: TranscriptDirective): void {
-		this.currentDirective = next;
+		this.currentDirective = preserveDirectiveSource(
+			this.currentDirective!,
+			next
+		);
 
-		const { skips } = parseContentWithSkips(next.content);
+		const { skips } = parseContentWithSkips(this.currentDirective.content);
 		this.skipRegions = skips;
 
-		let effectiveStart = next.attributes.start ?? 0;
+		let effectiveStart = this.currentDirective.attributes.start ?? 0;
 		for (const skip of this.skipRegions) {
 			if (effectiveStart >= skip.audioStart && effectiveStart < skip.audioEnd) {
 				effectiveStart = skip.audioEnd;
@@ -283,9 +299,12 @@ export class AudioManager {
 	/**
 	 * Resolve a vault-relative audio path to a playable URL.
 	 */
-	private async resolveAudioUrl(audioPath: string): Promise<string | null> {
-		const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
-		const file = resolveAudioFile(this.app, audioPath, sourcePath);
+	private async resolveAudioUrl(
+		directive: TranscriptDirective
+	): Promise<string | null> {
+		const sourcePath =
+			directive.sourcePath ?? this.app.workspace.getActiveFile()?.path ?? "";
+		const file = resolveAudioFile(this.app, directive.audioPath, sourcePath);
 
 		if (file) {
 			return this.app.vault.getResourcePath(file);

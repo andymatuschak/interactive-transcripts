@@ -105,7 +105,8 @@ export class AlignmentManager {
 		this.requestGeneration.set(directiveKey, gen);
 
 		// Find the audio file
-		const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+		const sourcePath =
+			directive.sourcePath ?? this.app.workspace.getActiveFile()?.path ?? "";
 		const audioFile = resolveAudioFile(this.app, audioPath, sourcePath);
 		if (!audioFile) {
 			return;
