@@ -9,6 +9,7 @@ import {
 	collapseSkips,
 	deleteFromTranscriptWithSkip,
 } from "./operations";
+import { parseContentWithSkips } from "./parser";
 import type { TranscriptDirective, AlignmentData, SkipMarker } from "../types";
 
 describe("splitTranscript", () => {
@@ -654,6 +655,19 @@ describe("collapseSkips", () => {
 		expect(result.skips[0]!.audioStart).toBe(1.0);
 		expect(result.skips[0]!.audioEnd).toBe(4.0);
 	});
+
+	test("merges reverse-inserted skips at one boundary across an audio gap", () => {
+		const skips: SkipMarker[] = [
+			{ position: 8, audioStart: 34.2, audioEnd: 35.15 },
+			{ position: 8, audioStart: 32.92, audioEnd: 33.67 },
+		];
+
+		const result = collapseSkips(skips, { start: 30.36, end: 47.8 }, 20);
+
+		expect(result.skips).toEqual([
+			{ position: 8, audioStart: 32.92, audioEnd: 35.15 },
+		]);
+	});
 });
 
 describe("splitTranscriptAtMultipleRanges", () => {
@@ -886,6 +900,57 @@ describe("deleteFromTranscriptWithSkip", () => {
 		expect(result).not.toBeNull();
 		// Should merge the skips since they're adjacent in audio time
 		// "world" (0.5-1.0) + "this" (1.0-1.3) = merged skip (0.5-1.3)
+	});
+
+	test("keeps an existing skip at the deletion boundary on repeated delete", () => {
+		const content = "say the word quote followed by a few";
+		const alignment: AlignmentData = {
+			...mockAlignment,
+			text: content,
+			segments: [{
+				start: 0,
+				end: 2.5,
+				text: content,
+				words: [
+					{ word: "say", start: 0, end: 0.2 },
+					{ word: "the", start: 0.2, end: 0.4 },
+					{ word: "word", start: 0.4, end: 0.71 },
+					{ word: "quote", start: 0.72, end: 1.47 },
+					{ word: "followed", start: 1.48, end: 2 },
+					{ word: "by", start: 2, end: 2.2 },
+					{ word: "a", start: 2.2, end: 2.3 },
+					{ word: "few", start: 2.3, end: 2.5 },
+				],
+			}],
+		};
+		const directive = { ...baseDirective, content };
+
+		// First Delete removes "quote" and inserts a skip after "word".
+		const quoteStart = content.indexOf("quote");
+		const first = deleteFromTranscriptWithSkip(
+			directive,
+			alignment,
+			quoteStart,
+			quoteStart + 1,
+			[]
+		)!;
+		const serializedContent = first.markdown.split("\n")[1]!;
+		const parsed = parseContentWithSkips(serializedContent);
+
+		// A second Delete removes "word" on the other side of that skip.
+		const wordEnd = parsed.text.indexOf("word") + "word".length;
+		const second = deleteFromTranscriptWithSkip(
+			{ ...directive, content: parsed.text },
+			first.alignment,
+			wordEnd - 1,
+			wordEnd,
+			parsed.skips
+		)!;
+
+		// Both deletions collapse at the edit boundary without splitting "followed".
+		expect(second.markdown).toBe(`:::transcript[recording.m4a]{start=0 end=2}
+say the :skip{start=0.4 end=1.47} followed by a few
+:::`);
 	});
 
 	test("returns null when deleting everything", () => {

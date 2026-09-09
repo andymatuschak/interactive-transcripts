@@ -660,6 +660,8 @@ export function snapToWordBoundaries(
 
 /** Epsilon for comparing audio timestamps (10ms) */
 const TIME_EPSILON = 0.01;
+/** Allow for floating-point error when timestamps differ by exactly the epsilon. */
+const TIME_COMPARISON_TOLERANCE = 1e-9;
 
 /**
  * Result of collapsing skips.
@@ -688,8 +690,12 @@ export function collapseSkips(
 		return { skips: [], attrs: { ...attrs } };
 	}
 
-	// Sort skips by position
-	const sortedSkips = [...skips].sort((a, b) => a.position - b.position);
+	// Sort skips by position, then chronologically when multiple deletions land
+	// at the same text boundary. Repeated Delete operations add the newer range
+	// after the existing one even when it occurs earlier in the audio.
+	const sortedSkips = [...skips].sort(
+		(a, b) => a.position - b.position || a.audioStart - b.audioStart
+	);
 
 	// Merge adjacent skips (by audio time, not position)
 	const mergedSkips: SkipMarker[] = [];
@@ -703,10 +709,16 @@ export function collapseSkips(
 		const next = sortedSkips[i];
 		if (!next) continue;
 
-		// Check if skips are adjacent in audio time
-		if (Math.abs(current.audioEnd - next.audioStart) < TIME_EPSILON) {
+		// Ranges at the same text boundary came from contiguous text deletions and
+		// can become one skipped interval, including any silence between words.
+		// Otherwise, merge overlapping or adjacent ranges. Timestamp arithmetic
+		// can make an exact 10ms gap slightly larger than 0.01, so include a tiny
+		// tolerance.
+		const sameTextBoundary = current.position === next.position;
+		const audioGap = next.audioStart - current.audioEnd;
+		if (sameTextBoundary || audioGap <= TIME_EPSILON + TIME_COMPARISON_TOLERANCE) {
 			// Merge: extend current skip to include next
-			current.audioEnd = next.audioEnd;
+			current.audioEnd = Math.max(current.audioEnd, next.audioEnd);
 		} else {
 			mergedSkips.push(current);
 			current = { ...next };
@@ -840,14 +852,32 @@ export function deleteFromTranscriptWithSkip(
 			skip.position < snapped.start || skip.position >= snapped.end
 		);
 
-		// Adjust positions of skips after the deletion point
+		// Remap skips into newContent. Subtracting only the deleted word length
+		// is not sufficient here: parsing a serialized skip leaves its visual
+		// padding on both sides ("word  followed"), and rebuilding newContent
+		// collapses that boundary back to one space. Without accounting for the
+		// collapsed whitespace, a skip immediately after the deleted word moves
+		// one character into the following word on each repeated deletion.
+		const leadingWhitespaceAfterDelete = afterDelete.length - trimmedAfter.length;
+		const oldAfterContentStart = snapped.end + leadingWhitespaceAfterDelete;
+		const newBoundary = trimmedBefore.length;
+		const newAfterContentStart = trimmedBefore && trimmedAfter
+			? newBoundary + 1
+			: newBoundary;
+
 		newSkips = newSkips.map(skip => {
-			if (skip.position > snapped.start) {
-				// Adjust position by the amount of text removed
-				const offset = snapped.end - snapped.start;
-				return { ...skip, position: skip.position - offset };
+			if (skip.position < snapped.start) {
+				// A skip in whitespace trimmed from the end of the prefix belongs at
+				// the deletion boundary.
+				return { ...skip, position: Math.min(skip.position, newBoundary) };
 			}
-			return skip;
+
+			// Skips in the leading whitespace of the suffix also belong at the
+			// deletion boundary. Later skips retain their suffix-relative offset.
+			const position = skip.position <= oldAfterContentStart
+				? newBoundary
+				: newAfterContentStart + (skip.position - oldAfterContentStart);
+			return { ...skip, position };
 		});
 
 		// Add the new skip marker
