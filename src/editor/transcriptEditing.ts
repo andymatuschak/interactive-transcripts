@@ -53,6 +53,26 @@ interface TranscriptEditContext {
 }
 
 /**
+ * Read a directive's content exactly as it appears in the document.
+ *
+ * A container directive's source range includes the line break immediately
+ * before its closing `:::` fence. That line break separates the content from
+ * the fence; it is not part of the content itself. Keeping it causes a
+ * round-trip through serializeDirective() to add a blank line before the
+ * closing fence.
+ */
+function getRawDirectiveContent(state: EditorState, directive: TranscriptDirective): string {
+	const contentBeforeClosingFence = state.doc.sliceString(
+		directive.contentFrom,
+		directive.to - 3
+	);
+
+	return contentBeforeClosingFence.endsWith("\n")
+		? contentBeforeClosingFence.slice(0, -1)
+		: contentBeforeClosingFence;
+}
+
+/**
  * Find directive and alignment for an edit range within a transcript block.
  * Returns null if the range is not inside a transcript or has no alignment.
  */
@@ -70,7 +90,7 @@ function findEditContext(
 
 	// Use raw document text to preserve paragraph breaks (\n\n).
 	// directive.content is AST-reconstructed and collapses \n\n to \n.
-	const rawContent = tr.startState.doc.sliceString(directive.contentFrom, directive.to - 3);
+	const rawContent = getRawDirectiveContent(tr.startState, directive);
 	const parsed = parseContentWithSkips(rawContent);
 
 	// The alignment store normalizes keys internally, so lookup works
@@ -292,7 +312,7 @@ function handleExternalReplacements(tr: Transaction): Transaction | null {
 
 	for (const [directive, changes] of directiveChanges) {
 		// Get raw content and parse skip markers
-		const rawContent = tr.startState.doc.sliceString(directive.contentFrom, directive.to - 3);
+		const rawContent = getRawDirectiveContent(tr.startState, directive);
 		const parsed = parseContentWithSkips(rawContent);
 
 		const alignment = alignmentStore.get(directive.audioPath, parsed.text);
@@ -428,7 +448,7 @@ function transcriptSplitFilter(tr: Transaction): Transaction | readonly Transact
 	// directive.content is reconstructed from the markdown AST (paragraphs joined
 	// by single \n, trimmed), so its offsets don't match document positions.
 	// Use the raw document text for finding the newline.
-	const rawContent = doc.sliceString(directive.contentFrom, directive.to - 3);
+	const rawContent = getRawDirectiveContent(tr.startState, directive);
 	const expectedOffset = (newlineInsertPos - 1) - directive.contentFrom;
 
 	// Find the actual newline in raw document content
