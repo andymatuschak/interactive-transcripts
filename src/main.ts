@@ -91,14 +91,14 @@ export default class TranscriptPlugin extends Plugin {
 				const notice = new Notice("Transcribing: 0%", 0);
 				try {
 					const alignmentManager = AlignmentManager.getInstance();
-					const alignment = await alignmentManager.transcribeAudioFile(audioFile, linkpath, (progress) => {
+					const alignment = await alignmentManager.transcribeAudioFile(audioFile, audioFile.path, (progress) => {
 						const percent = progress.percent ?? 0;
 						const label = progress.phase === "downloading" ? "Downloading model" : "Transcribing";
 						notice.setMessage(`${label}: ${percent}%`);
 					});
 
 					const directive = serializeDirective({
-						audioPath: linkpath,
+						audioPath: audioFile.path,
 						attributes: {},
 						content: alignment.text,
 						from: 0,

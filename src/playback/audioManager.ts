@@ -1,6 +1,8 @@
-import { App, Notice, TFile } from "obsidian";
+import { Notice } from "obsidian";
+import type { App } from "obsidian";
 import type { SkipMarker, TranscriptDirective } from "../types";
 import { parseContentWithSkips } from "../core/parser";
+import { resolveAudioFile } from "../core/audioFileResolver";
 
 export interface PlaybackState {
 	isPlaying: boolean;
@@ -282,10 +284,10 @@ export class AudioManager {
 	 * Resolve a vault-relative audio path to a playable URL.
 	 */
 	private async resolveAudioUrl(audioPath: string): Promise<string | null> {
-		// Try to find the file in the vault
-		const file = this.app.vault.getAbstractFileByPath(audioPath);
+		const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+		const file = resolveAudioFile(this.app, audioPath, sourcePath);
 
-		if (file instanceof TFile) {
+		if (file) {
 			return this.app.vault.getResourcePath(file);
 		}
 

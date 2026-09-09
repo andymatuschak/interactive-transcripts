@@ -1,4 +1,4 @@
-import { App, TFile } from "obsidian";
+import type { App, TFile } from "obsidian";
 import { alignmentStore } from "./alignmentStore";
 import { SpeechEngine, DEFAULT_PARAKEET_MODEL } from "./speechEngine";
 import { AlignmentCache } from "./alignmentCache";
@@ -7,6 +7,7 @@ import { hashString } from "../core/hash";
 import { reconcileAlignmentToText } from "./reconcile";
 import { DEFAULT_SETTINGS, type TranscriptPluginSettings } from "../settings";
 import type { TranscriptDirective, AlignmentData, AlignedSegment, AlignedWord } from "../types";
+import { resolveAudioFile } from "../core/audioFileResolver";
 
 export type AlignmentStatus = "idle" | "pending" | "generating" | "complete" | "error";
 
@@ -104,8 +105,9 @@ export class AlignmentManager {
 		this.requestGeneration.set(directiveKey, gen);
 
 		// Find the audio file
-		const audioFile = this.app.vault.getAbstractFileByPath(audioPath);
-		if (!(audioFile instanceof TFile)) {
+		const sourcePath = this.app.workspace.getActiveFile()?.path ?? "";
+		const audioFile = resolveAudioFile(this.app, audioPath, sourcePath);
+		if (!audioFile) {
 			return;
 		}
 
